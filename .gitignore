@@ -1,0 +1,43 @@
+
+# Ignore everything
+*
+
+# But descend into directories
+!*/
+
+# but still exclude generated folders
+*.egg-info/
+*.ipynb_checkpoints/
+*.vscode/
+*.mypy_cache/
+*obj/
+*.terraform/
+*__pycache__/
+
+# And permit certain filetypes
+!*.py
+!*.tf
+!*.conf
+!*.sh
+!serve
+!Dockerfile*
+!*.md
+!*.txt
+!*.drawio
+!*.yml
+!*.yaml
+!*.template
+!*.helmignore
+!*.png
+!*.remote.tfbackend
+!*.tfvars
+!Pipfile*
+
+# And dotfiles
+!.gitignore
+!.arclint
+
+# And some dotfolders
+!.github/*
+
+*lambda_dist_pkg/
