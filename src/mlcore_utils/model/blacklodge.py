@@ -70,7 +70,7 @@ class Blacklodge_Container(object):
             return Blacklodge_Container(
                 git_repo_address="https://github.com/PCDST/blacklodge_containers/tree/main",
                 github_auth=github_auth,
-                dockerfile_path="src/dockerfiles/base_container/Dockerfile",
+                dockerfile_path="dockerfiles/base_container/Dockerfile",
                 prebuilt_container=prebuilt_container,
                 context_path="./src",
             )
