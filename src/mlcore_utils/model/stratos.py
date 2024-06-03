@@ -1,9 +1,10 @@
 from abc import ABC, abstractmethod
+import json
 from result import is_ok, is_err
 import time
 import ast
 import requests
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any, Dict
 from attrs import define, field
 
 from mlcore_utils.model.common import (
@@ -58,10 +59,8 @@ class Stratos_Api_Caller(object):
             else self.number_of_retries
         ):
             try:
-                url = f"{self.stratos_url}\\{endpoint}"
+                url = f"{self.stratos_url}/{endpoint}"
                 if http_method == Http_Method.POST:
-                    print(url)
-                    print(json_data)
                     response = requests.post(
                         url=url,
                         json=json_data,
@@ -105,17 +104,17 @@ class Stratos_Api_Caller(object):
             # status_response = requests.get(url = f"{self.stratos_url}\\{status_response_url}", headers = self.get_default_stratos_headers())
             status_response = self.call_api(
                 http_method=Http_Method.GET,
-                endpoint=f"{self.stratos_url}\\{status_response_url}",
+                endpoint=f"{status_response_url}",
             )
             if status_response.status_code == 200:
                 status = status_response.json()["build_status"]
                 print("Current status " + status)
                 if status.lower() == "completed":
-                    print("finished")
+                    conclusion = status_response.json()["conclusion"] if "conclusion" in status_response.json() else "..."
+                    print("finished with " + conclusion)
                     finished = True
                     return status_response
                 else:
-                    print("calling again...")
                     time.sleep(seconds_to_wait)
                     num_attempt = num_attempt + 1
             else:
@@ -151,8 +150,8 @@ class Stratos_Api_Caller(object):
 @define
 class Container_Build_Response(ABC):
     status: Blacklodge_Action_Status = field()
-    message: Optional[str] = field()
-    error: Optional[str] = field()
+    message: Optional[Dict[str, Any]] = field()
+    error: Optional[Dict[str, Any]] = field()
 
 
 class Container_Builder(object):
@@ -196,7 +195,7 @@ class Container_Build_Data_For_Stratos_Api_V1(object):
         repo = (
             self.blacklodge_model.runtime_config.blacklodge_container.github_repo.git_repo_name
         )
-        return f"{org}/{repo}"
+        return f"{org.upper() if org == 'pcdst' else org}/{repo}"
 
     def get_docker_context(self):
         ctx = self.blacklodge_model.runtime_config.blacklodge_container.context_path
@@ -285,26 +284,38 @@ class Stratos_Api_V1_Container_Builder(Container_Builder):
         if call_response[0].status_code == 200:
             if call_response[1]:
                 if call_response[1].status_code == 200:
-                    return Container_Build_Response(
-                        status=Blacklodge_Action_Status.SUCCESS,
-                        message="Container Image Built Successfully",
-                        error=None,
-                    )
+                    conclusion = call_response[1].json()["conclusion"]
+                    if conclusion == "success":
+                        return Container_Build_Response(
+                            status=Blacklodge_Action_Status.SUCCESS,
+                            message=call_response[1].json(),
+                            error=None,
+                        )
+
+                    else:
+                        return Container_Build_Response(
+                            status=Blacklodge_Action_Status.FAILED,
+                            message=None,
+                            #error=f"Container Image Built priocess failed. YOu can find details here: <{call_response[1].json()['html_url']}>",
+                            error=call_response[1].json(),
+                        )
+
                 else:
                     return Container_Build_Response(
                         status=Blacklodge_Action_Status.FAILED,
                         message=None,
-                        error=call_response[1].text,
+                        #error=call_response[1].text,
+                        error={"status_code" : call_response[1].status_code, "error" : "request to build image successfulyl submitted. But process failed with error : " + call_response[1].text},
                     )
             else:
                 return Container_Build_Response(
                     status=Blacklodge_Action_Status.UNKNOWN,
                     message=None,
-                    error="Container image built request successfully submitted, but could not get status of the action",
+                    error={"error" : "Container image built request successfully submitted, but could not get status of the action"},
                 )
         else:
             return Container_Build_Response(
                 status=Blacklodge_Action_Status.FAILED,
                 message=None,
-                error=call_response[0].text,
+                error={"status_code" : call_response[0].status_code, "error" : "request to build image failed with error: " + call_response[0].text},
             )
