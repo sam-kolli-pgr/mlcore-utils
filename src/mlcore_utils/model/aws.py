@@ -9,7 +9,12 @@ from pgraws import pgraws
 from datetime import datetime
 from dateutil import tz
 from typing import Any, Optional, Dict
-from mlcore_utils.model.common import Secret_Getter, MLCore_Secret
+from mlcore_utils.model.common import (
+    Runtime_Environment,
+    Runtime_Environment_Detector,
+    Secret_Getter,
+    MLCore_Secret,
+)
 from result import Result, Err, Ok, is_err, is_ok
 import json
 import boto3
@@ -52,6 +57,40 @@ class AWS_Credentials(ABC):
                 return Ok(self._session)
             except Exception as e:
                 return Err(str(e))
+
+    @classmethod
+    def inject_aws_credentials(cls, logger, region: str = "us-east-1"):
+        # cloud 9
+        detected_environment = Runtime_Environment_Detector.detect()
+        if detected_environment == Runtime_Environment.CLOUD9:
+            logger.info(
+                f"Running in {detected_environment.value}. Returning default aws credentials"
+            )
+            return AWS_Default_Credentials(logger, region)
+        elif (
+            detected_environment == Runtime_Environment.LOCAL_MAC
+            or detected_environment == Runtime_Environment.LOCAL_DOCKER
+        ):
+            logger.info(
+                f"Running in {detected_environment.value}. Returning pgr sts aws credentials"
+            )
+            creds: AWS_Credentials = PGR_STS_Credentials(
+                aws_account="004782836026",
+                role="D-A-AWS0GD-EDS-MLCORE",
+                username=os.environ["USER"],
+                password=MLCore_Secret(os.environ["PASSWORD"]),
+                logger=logger,
+            )
+            return creds
+        elif detected_environment == Runtime_Environment.STRATOS:
+            logger.info(
+                f"Running in {detected_environment.value}. Returning default aws credentials"
+            )
+            return AWS_Default_Credentials(logger, region)
+        else:
+            raise Exception(
+                "Cannot get aws creds for runtime " + detected_environment.name
+            )
 
 
 class AWS_Default_Credentials(AWS_Credentials):
@@ -176,17 +215,21 @@ class AWS_Utils(object):
         else:
             raise Exception("Creating Boto3 Client failed with unknown error")
 
+
 class AWS_System_Manager(AWS_Utils):
     def __init__(self, aws_credentials: AWS_Credentials, logger) -> None:
         super().__init__(aws_credentials, "ssm", logger)
 
     def get_parameter_value(self, parameter_name) -> Result[Any, err]:
         try:
-            param_val = self.get_client().get_parameter(Name=parameter_name)["Parameter"]["Value"]
+            param_val = self.get_client().get_parameter(Name=parameter_name)[
+                "Parameter"
+            ]["Value"]
             return Ok(param_val)
         except Exception as e:
-            return Err(f"Error while getting value for parameter {parameter_name} : {str(e)}")
-
+            return Err(
+                f"Error while getting value for parameter {parameter_name} : {str(e)}"
+            )
 
 
 class AWS_SecretsManager_Secret_Getter(Secret_Getter):
@@ -199,7 +242,9 @@ class AWS_SecretsManager_Secret_Getter(Secret_Getter):
         self.secret_key = secret_key
 
     def get_secret(self) -> Result[MLCore_Secret, str]:
-        ssm_client = AWS_Utils(self.credentials, "secretsmanager", self.logger).get_client()
+        ssm_client = AWS_Utils(
+            self.credentials, "secretsmanager", self.logger
+        ).get_client()
         try:
             jetstream_secret = ssm_client.get_secret_value(SecretId=self.secret_name)[
                 "SecretString"
@@ -207,6 +252,11 @@ class AWS_SecretsManager_Secret_Getter(Secret_Getter):
             return Ok(MLCore_Secret(json.loads(jetstream_secret)[self.secret_key]))
         except Exception as e:
             return Err("Error Getting Secret from AWS Secrets Manager. " + str(e))
+
+
+class AWS_Cognito_Util(AWS_Utils):
+    def __init__(self, aws_credentials: AWS_Credentials, logger) -> None:
+        super().__init__(aws_credentials, "cognito-idp", logger)
 
 
 class AWS_S3_Util(AWS_Utils):
@@ -329,6 +379,29 @@ class AWS_Accounts_For_Blacklodge(object):
 
     @classmethod
     def create_from_env(cls, env: str) -> AWS_Accounts_For_Blacklodge:
+        return AWS_Accounts_For_Blacklodge(
+            ecr_account=AWS_CONSTANTS[env]["ecr_account"],
+            aws_account_num=AWS_CONSTANTS[env]["aws_account_num"],
+            aws_role_arn=AWS_CONSTANTS[env]["aws_role_arn"],
+            aws_account_name=AWS_CONSTANTS[env]["aws_account_name"],
+        )
+
+    @classmethod
+    def create_from_runtime_environment(cls) -> AWS_Accounts_For_Blacklodge:
+        runtime_env = Runtime_Environment_Detector.detect()
+        if (
+            runtime_env == Runtime_Environment.LOCAL_DOCKER
+            or runtime_env == Runtime_Environment.LOCAL_MAC
+            or runtime_env == Runtime_Environment.CLOUD9
+        ):
+            env = "dev"
+        elif runtime_env == Runtime_Environment.STRATOS:
+            env = "prod"
+        else:
+            raise Exception(
+                "Cannot create AWS_Accounts_For_Blacklodge from given runtime env "
+                + runtime_env
+            )
         return AWS_Accounts_For_Blacklodge(
             ecr_account=AWS_CONSTANTS[env]["ecr_account"],
             aws_account_num=AWS_CONSTANTS[env]["aws_account_num"],

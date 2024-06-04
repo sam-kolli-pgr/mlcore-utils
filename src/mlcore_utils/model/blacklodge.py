@@ -1,11 +1,13 @@
 from __future__ import annotations
+import requests
+import boto3
 import toml
 from dockerfile_parse import DockerfileParser
 from typing import Optional, Any, List
 from enum import Enum
 from attrs import define, field
 
-from mlcore_utils.model.aws import AWS_Accounts_For_Blacklodge
+from mlcore_utils.model.aws import AWS_Accounts_For_Blacklodge, AWS_Utils
 from mlcore_utils.model.gh import GitHub_Repo, GitHub_Auth
 
 
@@ -42,16 +44,25 @@ class Blacklodge_Container(object):
 
     def __attrs_post_init__(self):
         self.github_repo = GitHub_Repo.get_from_inputs(
-            git_repo_url=self.git_repo_address,
-            github_auth=self.github_auth
+            git_repo_url=self.git_repo_address, github_auth=self.github_auth
         )
 
     @classmethod
-    def get_from_inputs(cls, git_repo_address: str, github_auth: GitHub_Auth, docker_file_path: str, prebuilt_container: Prebuilt_Container, context_path: str = "./src") -> Blacklodge_Container:
+    def get_from_inputs(
+        cls,
+        git_repo_address: str,
+        github_auth: GitHub_Auth,
+        docker_file_path: str,
+        prebuilt_container: Prebuilt_Container,
+        context_path: str = "./src",
+    ) -> Blacklodge_Container:
         return Blacklodge_Container(
-            git_repo_address, github_auth, docker_file_path, prebuilt_container, context_path
+            git_repo_address,
+            github_auth,
+            docker_file_path,
+            prebuilt_container,
+            context_path,
         )
-
 
     def get_container_build_args(self):
         pass
@@ -207,6 +218,7 @@ class Blacklodge_Model:
             git_repo_url=git_repo_url,
             git_repo_branch=git_repo_branch,
             git_repo_path=git_repo_path,
+            github_auth=github_auth,
         )
         aliases = [
             Pipeline_Alias(entry["version_number"], entry["alias_name"])
@@ -214,7 +226,9 @@ class Blacklodge_Model:
         ]
 
         prebuilt_container = Prebuilt_Container(data["runtime"]["container"])
-        blacklodge_container = Blacklodge_Container.get_from_prebuilt_container(prebuilt_container, github_auth)
+        blacklodge_container = Blacklodge_Container.get_from_prebuilt_container(
+            prebuilt_container, github_auth
+        )
 
         replicas = (
             data["runtime"]["fixed_scale"]["replicas"]
@@ -296,3 +310,34 @@ class Blacklodge_BusinessUnit(object):
 
     def get_namespace(self) -> str:
         return "mlcore"
+
+
+@define
+class Blacklodge_User(object):
+    lan_id: str = field()
+    name: str = field()
+    email: str = field()
+    username: str = field()
+    business_unit: Blacklodge_BusinessUnit = field()
+
+    @classmethod
+    def create_from_cognito_saml_token(
+        cls, user_pool_id: str, aws_util_for_cognito: AWS_Utils, saml_token: str
+    ) -> Blacklodge_User:
+        cognito_client = aws_util_for_cognito.get_client()
+        user_pool_details = cognito_client.describe_user_pool(UserPoolId=user_pool_id)[
+            "UserPool"
+        ]
+        region = aws_util_for_cognito.aws_credentials.region
+        user_info_endpoint = f"https://{user_pool_details['Domain']}.auth.{region}.amazoncognito.com/oauth2/userInfo"
+        user_info_auth_header = {"Authorization": f"Bearer {saml_token}"}
+
+        r = requests.post(user_info_endpoint, headers=user_info_auth_header, timeout=2)
+        data = r.json()
+        return Blacklodge_User(
+            lan_id=data["custom:lan_id"],
+            name=data["name"],
+            email=data["email"],
+            business_unit=Blacklodge_BusinessUnit(custom_groups=data["custom:groups"]),
+            username=data["username"],
+        )

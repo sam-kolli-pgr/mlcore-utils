@@ -40,7 +40,9 @@ class Stratos_Api_Caller(object):
                 "Content-Type": "application/json",
             }
         elif is_err(secret_result):
-            raise Exception("error getting secret for strator API: " + secret_result.err_value)
+            raise Exception(
+                "error getting secret for strator API: " + secret_result.err_value
+            )
         else:
             raise Exception("Unknown error getting secret for Stratos API")
 
@@ -66,7 +68,7 @@ class Stratos_Api_Caller(object):
                         json=json_data,
                         headers=self.get_default_stratos_headers(),
                         timeout=timeout,
-                        #verify="/etc/ssl/certs/ca-certificates.crt",
+                        # verify="/etc/ssl/certs/ca-certificates.crt",
                     )
                     return response
                 elif http_method == Http_Method.GET:
@@ -75,7 +77,7 @@ class Stratos_Api_Caller(object):
                         json=json_data,
                         headers=self.get_default_stratos_headers(),
                         timeout=timeout,
-                        #verify="/etc/ssl/certs/ca-certificates.crt",
+                        # verify="/etc/ssl/certs/ca-certificates.crt",
                     )
                     return response
                 else:
@@ -110,7 +112,11 @@ class Stratos_Api_Caller(object):
                 status = status_response.json()["build_status"]
                 print("Current status " + status)
                 if status.lower() == "completed":
-                    conclusion = status_response.json()["conclusion"] if "conclusion" in status_response.json() else "..."
+                    conclusion = (
+                        status_response.json()["conclusion"]
+                        if "conclusion" in status_response.json()
+                        else "..."
+                    )
                     print("finished with " + conclusion)
                     finished = True
                     return status_response
@@ -208,9 +214,11 @@ class Container_Build_Data_For_Stratos_Api_V1(object):
         return [self.blacklodge_model.version]
 
     def get_git_commit_sha(self):
-        res = self.blacklodge_model.runtime_config.blacklodge_container.github_repo.get_commit_sha()
+        res = (
+            self.blacklodge_model.runtime_config.blacklodge_container.github_repo.get_commit_sha()
+        )
         if is_ok(res):
-            return (res.ok_value)
+            return res.ok_value
         elif is_err(res):
             raise Exception("Error getting git commit sha " + res.err_value)
         else:
@@ -296,7 +304,7 @@ class Stratos_Api_V1_Container_Builder(Container_Builder):
                         return Container_Build_Response(
                             status=Blacklodge_Action_Status.FAILED,
                             message=None,
-                            #error=f"Container Image Built priocess failed. YOu can find details here: <{call_response[1].json()['html_url']}>",
+                            # error=f"Container Image Built priocess failed. YOu can find details here: <{call_response[1].json()['html_url']}>",
                             error=call_response[1].json(),
                         )
 
@@ -304,18 +312,28 @@ class Stratos_Api_V1_Container_Builder(Container_Builder):
                     return Container_Build_Response(
                         status=Blacklodge_Action_Status.FAILED,
                         message=None,
-                        #error=call_response[1].text,
-                        error={"status_code" : call_response[1].status_code, "error" : "request to build image successfulyl submitted. But process failed with error : " + call_response[1].text},
+                        # error=call_response[1].text,
+                        error={
+                            "status_code": call_response[1].status_code,
+                            "error": "request to build image successfulyl submitted. But process failed with error : "
+                            + call_response[1].text,
+                        },
                     )
             else:
                 return Container_Build_Response(
                     status=Blacklodge_Action_Status.UNKNOWN,
                     message=None,
-                    error={"error" : "Container image built request successfully submitted, but could not get status of the action"},
+                    error={
+                        "error": "Container image built request successfully submitted, but could not get status of the action"
+                    },
                 )
         else:
             return Container_Build_Response(
                 status=Blacklodge_Action_Status.FAILED,
                 message=None,
-                error={"status_code" : call_response[0].status_code, "error" : "request to build image failed with error: " + call_response[0].text},
+                error={
+                    "status_code": call_response[0].status_code,
+                    "error": "request to build image failed with error: "
+                    + call_response[0].text,
+                },
             )

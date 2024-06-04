@@ -32,19 +32,27 @@ class GitHub_Auth(object):
     secret: MLCore_Secret = field()
 
     @classmethod
-    def get_from_username_and_secretstr(cls, username:str, secret_as_str: str) -> GitHub_Auth:
+    def get_from_username_and_secretstr(
+        cls, username: str, secret_as_str: str
+    ) -> GitHub_Auth:
         return GitHub_Auth(username, MLCore_Secret(secret_as_str))
 
     @classmethod
-    def get_from_username_and_secret_getter(cls, username:str, secret_getter: Secret_Getter) -> GitHub_Auth:
+    def get_from_username_and_secret_getter(
+        cls, username: str, secret_getter: Secret_Getter
+    ) -> GitHub_Auth:
         secret_result = secret_getter.get_secret()
         if is_ok(secret_result):
             return GitHub_Auth(username, secret_result.ok_value)
         elif is_err(secret_result):
-            raise Exception("Could not instantiate an object of GitHub. Error while getting the secret " + secret_result.err_value)
+            raise Exception(
+                "Could not instantiate an object of GitHub. Error while getting the secret "
+                + secret_result.err_value
+            )
         else:
-            raise Exception("Could not instantiate an object of GitHub. Unknown Error while getting the secret")
-
+            raise Exception(
+                "Could not instantiate an object of GitHub. Unknown Error while getting the secret"
+            )
 
 
 @define
@@ -134,7 +142,7 @@ class GitHub_Repo(object):
             r = dvc_repo.Repo(fs.repo.root_dir)
             r.pull()
 
-    def produce_tar_ball(self )-> Result[TarFile, str]:
+    def produce_tar_ball(self) -> Result[TarFile, str]:
         repo_dir = self.get_local_repo_folder()
         tarball = Tarball(
             source_directory=repo_dir, name="pipeline", destination_directory="/tmp"
