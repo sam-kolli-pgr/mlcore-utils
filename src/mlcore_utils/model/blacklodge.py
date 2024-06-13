@@ -93,10 +93,16 @@ class Pipeline_Runtime_Config:
     minimum_replicas: Optional[int] = field(default=None)
     maximum_replicas: Optional[int] = field(default=None)
     target_cpu_utilization: Optional[int] = field(default=None)
-    cpu: Optional[float] = field(default=None)
+    target_memory_utilization: Optional[int] = field(default=None)
+    cpu: Optional[float] = field(default=1)
     memory: Optional[int] = field(default=None)
+    min_cpu: Optional[float] = field(default=0.5)
+    min_memory: Optional[int] = field(default=750)
+    max_cpu: Optional[float] = field(default=1.5)
+    max_memory_mb: Optional[int] = field(default=1500)
     replicas: Optional[int] = field(default=None)
     inputs: Optional[Any] = field(default=None)
+    otel_tracing : bool = field(default=False)
 
     def __attrs_post_init__(self):
         if self.replicas and self.minimum_replicas:
@@ -148,22 +154,24 @@ class Pipeline_Runtime_Config:
         replicas,
         inputs,
     ):
-        return Pipeline_Runtime_Config(
-            blacklodge_container,
-            minimum_replicas,
-            maximum_replicas,
-            target_cpu_utilization,
-            cpu,
-            memory,
-            replicas,
-            inputs,
+        p= Pipeline_Runtime_Config(
+            blacklodge_container=blacklodge_container,
+            minimum_replicas=minimum_replicas,
+            maximum_replicas=maximum_replicas,
+            target_cpu_utilization=target_cpu_utilization,
+            cpu=cpu,
+            memory=memory,
+            replicas=replicas,
+            inputs=inputs,
         )
+        return p
 
 
 class Blacklodge_Model_Type(str, Enum):
     MODEL = "model"
     PIPELINE = "pipeline"
     JOB = "job"
+    CRONJOB = "cronjob"
 
 
 @define
@@ -190,8 +198,12 @@ class Blacklodge_Model:
     runtime_config: Pipeline_Runtime_Config = field()
     environment: Environment = field()
     service_account: str = field()
+    cron_schedule: str = field(default="*")
     object_type: Blacklodge_Model_Type = field(default=Blacklodge_Model_Type.PIPELINE)
     aliases: List[Pipeline_Alias] = field(factory=list)
+    user_email: List[str] = field(
+        default=["sam_s_kolli@progressive.com"]
+    )  # TODO: Fix this
 
     def __attrs_post_init__(self):
         pass
@@ -311,6 +323,9 @@ class Blacklodge_BusinessUnit(object):
     def get_namespace(self) -> str:
         return "mlcore"
 
+    def get_teamname(self) -> str:
+        return "mlcore"
+
 
 @define
 class Blacklodge_User(object):
@@ -341,3 +356,9 @@ class Blacklodge_User(object):
             business_unit=Blacklodge_BusinessUnit(custom_groups=data["custom:groups"]),
             username=data["username"],
         )
+
+    def get_namespace(self) -> str:
+        return self.business_unit.get_namespace()
+
+    def get_teamname(self) -> str:
+        return self.business_unit.get_teamname()
