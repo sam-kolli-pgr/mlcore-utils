@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
+import os
 from typing import Any
 from result import Result
 from enum import Enum
+import platform
 
 
 class Http_Method(str, Enum):
@@ -55,3 +57,33 @@ class Secret_Getter(ABC):
     @abstractmethod
     def get_secret(self) -> Result[MLCore_Secret, str]:
         pass
+
+
+class Runtime_Environment(str, Enum):
+    CLOUD9 = "cloud9"
+    LOCAL_MAC = "local_mac"
+    STRATOS = "stratos"
+    UNKNONW = "unknown"
+    LOCAL_DOCKER = "local_docker"
+
+
+class Runtime_Environment_Detector(object):
+    @classmethod
+    def detect(cls) -> Runtime_Environment:
+        if os.path.exists("/opt/c9"):
+            return Runtime_Environment.CLOUD9
+
+        elif platform.system().lower() == "darwin":
+            return Runtime_Environment.LOCAL_MAC
+
+        elif (
+            "KUBERNETES_SERVICE_HOST" in os.environ
+            and os.environ["KUBERNETES_SERVICE_HOST"] == "172.24.0.1"
+        ):
+            return Runtime_Environment.STRATOS
+
+        elif os.path.exists("/.dockerenv"):
+            return Runtime_Environment.LOCAL_DOCKER
+
+        else:
+            raise Exception("Could not detect Runtime environment")

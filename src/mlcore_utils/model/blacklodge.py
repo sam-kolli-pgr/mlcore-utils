@@ -1,11 +1,13 @@
 from __future__ import annotations
+import requests
+import boto3
 import toml
 from dockerfile_parse import DockerfileParser
 from typing import Optional, Any, List
 from enum import Enum
 from attrs import define, field
 
-from mlcore_utils.model.aws import AWS_Accounts_For_Blacklodge
+from mlcore_utils.model.aws import AWS_Accounts_For_Blacklodge, AWS_Utils
 from mlcore_utils.model.gh import GitHub_Repo, GitHub_Auth
 
 
@@ -42,16 +44,29 @@ class Blacklodge_Container(object):
 
     def __attrs_post_init__(self):
         self.github_repo = GitHub_Repo.get_from_inputs(
-            git_repo_url=self.git_repo_address,
-            github_auth=self.github_auth
+            git_repo_url=self.git_repo_address, github_auth=self.github_auth
+        )
+    def initialize_github_repo(self, github_auth: GitHub_Auth):
+        self.github_repo = GitHub_Repo.get_from_inputs(
+            git_repo_url=self.git_repo_address, github_auth=self.github_auth
         )
 
     @classmethod
-    def get_from_inputs(cls, git_repo_address: str, github_auth: GitHub_Auth, docker_file_path: str, prebuilt_container: Prebuilt_Container, context_path: str = "./src") -> Blacklodge_Container:
+    def get_from_inputs(
+        cls,
+        git_repo_address: str,
+        github_auth: GitHub_Auth,
+        docker_file_path: str,
+        prebuilt_container: Prebuilt_Container,
+        context_path: str = "./src",
+    ) -> Blacklodge_Container:
         return Blacklodge_Container(
-            git_repo_address, github_auth, docker_file_path, prebuilt_container, context_path
+            git_repo_address,
+            github_auth,
+            docker_file_path,
+            prebuilt_container,
+            context_path,
         )
-
 
     def get_container_build_args(self):
         pass
@@ -82,10 +97,15 @@ class Pipeline_Runtime_Config:
     minimum_replicas: Optional[int] = field(default=None)
     maximum_replicas: Optional[int] = field(default=None)
     target_cpu_utilization: Optional[int] = field(default=None)
-    cpu: Optional[float] = field(default=None)
+    target_memory_utilization: Optional[int] = field(default=None)
     memory: Optional[int] = field(default=None)
+    min_cpu: Optional[float] = field(default=0.5)
+    max_cpu: Optional[float] = field(default=1.5)
+    min_memory_mb: Optional[int] = field(default=750)
+    max_memory_mb: Optional[int] = field(default=1500)
     replicas: Optional[int] = field(default=None)
     inputs: Optional[Any] = field(default=None)
+    otel_tracing : bool = field(default=False)
 
     def __attrs_post_init__(self):
         if self.replicas and self.minimum_replicas:
@@ -97,17 +117,20 @@ class Pipeline_Runtime_Config:
                 self.minimum_replicas
                 and self.maximum_replicas
                 and self.target_cpu_utilization
-                and self.cpu
-                and self.memory
+                and self.target_memory_utilization
+                and self.min_cpu
+                and self.max_cpu
+                and self.min_memory_mb
+                and self.max_memory_mb
             ):
-                if self.cpu < 0.5 or self.cpu > 8.0:
-                    raise ValueError("cpu value should be between 0.5 and 8.0")
+                #if self.cpu < 0.5 or self.cpu > 8.0:
+                #    raise ValueError("cpu value should be between 0.5 and 8.0")
                 if self.target_cpu_utilization < 40 or self.target_cpu_utilization > 90:
                     raise ValueError(
                         "target_cpu_utilization value should be between 40 and 90"
                     )
-                if self.memory < 1 or self.memory > 60:
-                    raise ValueError("memory value should be between 1 and 60")
+                #if self.memory < 1 or self.memory > 60:
+                #    raise ValueError("memory value should be between 1 and 60")
                 if not (self.minimum_replicas > 0):
                     raise ValueError("min_replicas should be more than 0")
                 if not (self.maximum_replicas <= 32):
@@ -132,27 +155,35 @@ class Pipeline_Runtime_Config:
         minimum_replicas,
         maximum_replicas,
         target_cpu_utilization,
-        cpu,
-        memory,
+        target_memory_utilization,
+        min_cpu,
+        max_cpu,
+        min_memory_mb,
+        max_memory_mb,
         replicas,
         inputs,
     ):
-        return Pipeline_Runtime_Config(
-            blacklodge_container,
-            minimum_replicas,
-            maximum_replicas,
-            target_cpu_utilization,
-            cpu,
-            memory,
-            replicas,
-            inputs,
+        p= Pipeline_Runtime_Config(
+            blacklodge_container=blacklodge_container,
+            minimum_replicas=minimum_replicas,
+            maximum_replicas=maximum_replicas,
+            target_cpu_utilization=target_cpu_utilization,
+            target_memory_utilization=target_memory_utilization,
+            min_cpu=min_cpu,
+            max_cpu=max_cpu,
+            min_memory_mb=min_memory_mb,
+            max_memory_mb=max_memory_mb,
+            replicas=replicas,
+            inputs=inputs,
         )
+        return p
 
 
 class Blacklodge_Model_Type(str, Enum):
     MODEL = "model"
     PIPELINE = "pipeline"
     JOB = "job"
+    CRONJOB = "cronjob"
 
 
 @define
@@ -175,15 +206,31 @@ class Blacklodge_Model:
     name: str = field()
     version: int = field()
     python_version: str = field()
-    git_repo: GitHub_Repo = field()
+    git_repo_url: str = field()
+    git_repo_branch: str = field()
     runtime_config: Pipeline_Runtime_Config = field()
     environment: Environment = field()
     service_account: str = field()
+    cron_schedule: str = field(default="*")
     object_type: Blacklodge_Model_Type = field(default=Blacklodge_Model_Type.PIPELINE)
+    git_repo_path: Optional[str] = field(default=None)
+    git_repo: Optional[GitHub_Repo] = field(default=None)
     aliases: List[Pipeline_Alias] = field(factory=list)
+    user_email: List[str] = field(
+        default=["sam_s_kolli@progressive.com"]
+    )  # TODO: Fix this
 
     def __attrs_post_init__(self):
         pass
+
+    def initialize_github_repo(self, github_auth: GitHub_Auth):
+        self.git_repo = GitHub_Repo.get_from_inputs(
+            git_repo_url=self.git_repo_url,
+            git_repo_branch=self.git_repo_branch,
+            git_repo_path=self.git_repo_path,
+            github_auth=github_auth,
+        )
+
 
     @name.validator
     def validate_name(self, attribute, value):
@@ -191,7 +238,7 @@ class Blacklodge_Model:
             raise ValueError("Model/Pipline/Job name cannot contain underscores.")
 
     @staticmethod
-    def from_dict(data, github_auth: GitHub_Auth):
+    def from_dict(data):
         name = data["model"]["name"]
 
         git_repo_url = data["model"]["git_repo_url"]
@@ -203,18 +250,21 @@ class Blacklodge_Model:
         git_repo_path = (
             data["model"]["git_repo_path"] if "git_repo_path" in data["model"] else None
         )
-        repo = GitHub_Repo.get_from_inputs(
-            git_repo_url=git_repo_url,
-            git_repo_branch=git_repo_branch,
-            git_repo_path=git_repo_path,
-        )
+        #repo = GitHub_Repo.get_from_inputs(
+        #    git_repo_url=git_repo_url,
+        #    git_repo_branch=git_repo_branch,
+        #    git_repo_path=git_repo_path,
+        #    github_auth=github_auth,
+        #)
         aliases = [
             Pipeline_Alias(entry["version_number"], entry["alias_name"])
             for entry in data["alias"]
         ]
 
         prebuilt_container = Prebuilt_Container(data["runtime"]["container"])
-        blacklodge_container = Blacklodge_Container.get_from_prebuilt_container(prebuilt_container, github_auth)
+        blacklodge_container = Blacklodge_Container.get_from_prebuilt_container(
+            prebuilt_container, github_auth
+        )
 
         replicas = (
             data["runtime"]["fixed_scale"]["replicas"]
@@ -237,13 +287,28 @@ class Blacklodge_Model:
             if "autoscale" in data["runtime"]
             else None
         )
-        cpu = (
-            data["runtime"]["autoscale"]["cpu"]
+        target_memory_utilization = (
+            data["runtime"]["autoscale"]["target_memory_utilization"]
             if "autoscale" in data["runtime"]
             else None
         )
-        memory = (
-            data["runtime"]["autoscale"]["memory"]
+        min_cpu = (
+            data["runtime"]["autoscale"]["min_cpu"]
+            if "autoscale" in data["runtime"]
+            else None
+        )
+        max_cpu = (
+            data["runtime"]["autoscale"]["max_cpu"]
+            if "autoscale" in data["runtime"]
+            else None
+        )
+        min_memory_mb = (
+            data["runtime"]["autoscale"]["min_memory_mb"]
+            if "autoscale" in data["runtime"]
+            else None
+        )
+        max_memory_mb = (
+            data["runtime"]["autoscale"]["max_memory_mb"]
             if "autoscale" in data["runtime"]
             else None
         )
@@ -259,8 +324,11 @@ class Blacklodge_Model:
             minimum_replicas,
             maximum_replicas,
             target_cpu_utilization,
-            cpu,
-            memory,
+            target_memory_utilization,
+            min_cpu,
+            max_cpu,
+            min_memory_mb,
+            max_memory_mb,
             replicas,
             inputs,
         )
@@ -274,7 +342,10 @@ class Blacklodge_Model:
             name=name,
             version=1,
             python_version="3.9",
-            git_repo=repo,
+            git_repo_url=git_repo_url,
+            git_repo_branch=git_repo_branch,
+            git_repo_path=git_repo_path,
+            #git_repo=repo,
             aliases=aliases,
             runtime_config=runtime_config,
             service_account=service_account,
@@ -296,3 +367,43 @@ class Blacklodge_BusinessUnit(object):
 
     def get_namespace(self) -> str:
         return "mlcore"
+
+    def get_teamname(self) -> str:
+        return "mlcore"
+
+
+@define
+class Blacklodge_User(object):
+    lan_id: str = field()
+    name: str = field()
+    email: str = field()
+    username: str = field()
+    business_unit: Blacklodge_BusinessUnit = field()
+
+    @classmethod
+    def create_from_cognito_saml_token(
+        cls, user_pool_id: str, aws_util_for_cognito: AWS_Utils, saml_token: str
+    ) -> Blacklodge_User:
+        cognito_client = aws_util_for_cognito.get_client()
+        user_pool_details = cognito_client.describe_user_pool(UserPoolId=user_pool_id)[
+            "UserPool"
+        ]
+        region = aws_util_for_cognito.aws_credentials.region
+        user_info_endpoint = f"https://{user_pool_details['Domain']}.auth.{region}.amazoncognito.com/oauth2/userInfo"
+        user_info_auth_header = {"Authorization": f"Bearer {saml_token}"}
+
+        r = requests.post(user_info_endpoint, headers=user_info_auth_header, timeout=2)
+        data = r.json()
+        return Blacklodge_User(
+            lan_id=data["custom:lan_id"],
+            name=data["name"],
+            email=data["email"],
+            business_unit=Blacklodge_BusinessUnit(custom_groups=data["custom:groups"]),
+            username=data["username"],
+        )
+
+    def get_namespace(self) -> str:
+        return self.business_unit.get_namespace()
+
+    def get_teamname(self) -> str:
+        return self.business_unit.get_teamname()
