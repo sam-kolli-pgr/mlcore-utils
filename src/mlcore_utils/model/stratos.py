@@ -682,7 +682,7 @@ class Container_Deploy_Data_For_Stratos_Api_V1(object):
 
         resources_dict = {
             "limits": {"cpu": str(self.blacklodge_model.runtime_config.max_cpu), "memory": f"{int(self.blacklodge_model.runtime_config.max_memory_mb)}M"},
-            "requests": {"cpu": str(self.blacklodge_model.runtime_config.min_cpu), "memory": f"{int(self.blacklodge_model.runtime_config.min_memory)}M"}
+            "requests": {"cpu": str(self.blacklodge_model.runtime_config.min_cpu), "memory": f"{int(self.blacklodge_model.runtime_config.min_memory_mb)}M"}
         }
 
         clean_environment = "prod" if self.stratos_application_values.environment == "prod" else "nonprod"

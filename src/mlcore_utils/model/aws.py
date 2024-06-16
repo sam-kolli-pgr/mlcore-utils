@@ -220,7 +220,7 @@ class AWS_System_Manager(AWS_Utils):
     def __init__(self, aws_credentials: AWS_Credentials, logger) -> None:
         super().__init__(aws_credentials, "ssm", logger)
 
-    def get_parameter_value(self, parameter_name) -> Result[Any, err]:
+    def get_parameter_value(self, parameter_name) -> Result[Any, str]:
         try:
             param_val = self.get_client().get_parameter(Name=parameter_name)[
                 "Parameter"
