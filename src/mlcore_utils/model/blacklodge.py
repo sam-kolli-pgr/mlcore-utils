@@ -238,7 +238,7 @@ class Blacklodge_Model:
             raise ValueError("Model/Pipline/Job name cannot contain underscores.")
 
     @staticmethod
-    def from_dict(data):
+    def from_dict(data, github_auth : GitHub_Auth):
         name = data["model"]["name"]
 
         git_repo_url = data["model"]["git_repo_url"]
@@ -250,12 +250,12 @@ class Blacklodge_Model:
         git_repo_path = (
             data["model"]["git_repo_path"] if "git_repo_path" in data["model"] else None
         )
-        #repo = GitHub_Repo.get_from_inputs(
-        #    git_repo_url=git_repo_url,
-        #    git_repo_branch=git_repo_branch,
-        #    git_repo_path=git_repo_path,
-        #    github_auth=github_auth,
-        #)
+        repo = GitHub_Repo.get_from_inputs(
+            git_repo_url=git_repo_url,
+            git_repo_branch=git_repo_branch,
+            git_repo_path=git_repo_path,
+            github_auth=github_auth,
+        )
         aliases = [
             Pipeline_Alias(entry["version_number"], entry["alias_name"])
             for entry in data["alias"]
@@ -345,7 +345,7 @@ class Blacklodge_Model:
             git_repo_url=git_repo_url,
             git_repo_branch=git_repo_branch,
             git_repo_path=git_repo_path,
-            #git_repo=repo,
+            git_repo=repo,
             aliases=aliases,
             runtime_config=runtime_config,
             service_account=service_account,

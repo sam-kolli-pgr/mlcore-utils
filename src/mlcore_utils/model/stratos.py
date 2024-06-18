@@ -486,7 +486,8 @@ class Stratos_Application_Values(object):
     def get_mnamespace_identifier(self, blacklodge_user: Blacklodge_User):
         return blacklodge_user.get_teamname()
     def get_application_name(self, blacklodge_model: Blacklodge_Model):
-        return f"{blacklodge_model.name}-{blacklodge_model.version}"
+        #return f"{blacklodge_model.name}-{blacklodge_model.version}"
+        return f"{blacklodge_model.name}-kollialias"
     def get_platform(self):
         return self.platform
     def get_environment(self):
@@ -629,6 +630,7 @@ class Container_Deploy_Data_For_Stratos_Api_V1(object):
 
     def get_stratos_application_name(self) -> str:
         return self.stratos_application_values.get_application_name(self.blacklodge_model)
+        #return f"{self.blacklodge_model.name}-kollialias"
 
     def get_stratos_namespace_name(
         self,
@@ -662,12 +664,55 @@ class Container_Deploy_Data_For_Stratos_Api_V1(object):
         return self.blacklodge_model.user_email[0]
 
     def get_chart_yaml_contents(self):
-        chart_yaml = self._generate_chart_yaml()
+        #chart_yaml = self._generate_chart_yaml()
+        chart_yaml = self._generate_alias_chart_yaml()
         return base64.urlsafe_b64encode(chart_yaml.encode()).decode()
 
     def get_value_yaml_contents(self):
-        values_yaml = self._generate_values_yaml()
+        #values_yaml = self._generate_values_yaml()
+        values_yaml = self._generate_alias_values_yaml()
         return base64.urlsafe_b64encode(values_yaml.encode()).decode()
+
+    def _generate_alias_values_yaml(self) -> str:
+        """
+        Generates a helm values.yaml string from the provided inputs
+        """
+
+        values_yaml_dict = {
+            f"blacklodge-user-{self.blacklodge_model.object_type.value}": {
+                "modelName": f"{self.blacklodge_model.name}",
+                "modelVersion": self.blacklodge_model.version,
+                "aliasName": "kollialias",
+                "environment": self.stratos_application_values.environment,
+                "modelPort": 8081
+            }
+        }
+        return yaml.dump(values_yaml_dict)
+
+    def _generate_alias_chart_yaml(self) -> str:
+        """
+        Generates an appropriate helm Chart.yaml string that uses our pre-built templates
+        """
+
+        dependencies_list = [
+            {
+                "name": f"blacklodge-user-alias",
+                "version": "0.2.2",
+                "repository": "oci://867531445002.dkr.ecr.us-east-1.amazonaws.com/internal/helm/eds/blacklodge"
+            }
+        ]
+
+        chart_dict = {
+            "apiVersion" : "v2",
+            "name": f"blacklodge-{self.blacklodge_model.object_type}-{self.blacklodge_model.name}",
+            "description": "Auto-generated template for blacklodge deployment",
+            "type": "application",
+            "version": "1.0.0",
+            "appVersion": f"{self.blacklodge_model.version}.0.0",
+            "dependencies": dependencies_list
+        }
+        return yaml.dump(chart_dict)
+
 
     def _generate_values_yaml(self) -> str:
         """
