@@ -83,7 +83,7 @@ class Blacklodge_Container(object):
     ) -> Optional[Blacklodge_Container]:
         if prebuilt_container == Prebuilt_Container.BASE:
             return Blacklodge_Container(
-                git_repo_address="https://github.com/PCDST/blacklodge_containers/tree/skolli",
+                git_repo_address="https://github.com/PCDST/blacklodge_containers/tree/simple",
                 github_auth=github_auth,
                 dockerfile_path="dockerfiles/base_container/Dockerfile",
                 prebuilt_container=prebuilt_container,
@@ -340,7 +340,7 @@ class Blacklodge_Model:
 
         model = Blacklodge_Model(
             name=name,
-            version=1,
+            version=3,
             python_version="3.9",
             git_repo_url=git_repo_url,
             git_repo_branch=git_repo_branch,

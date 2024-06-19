@@ -486,8 +486,41 @@ class Stratos_Application_Values(object):
     def get_mnamespace_identifier(self, blacklodge_user: Blacklodge_User):
         return blacklodge_user.get_teamname()
     def get_application_name(self, blacklodge_model: Blacklodge_Model):
-        #return f"{blacklodge_model.name}-{blacklodge_model.version}"
+        return f"{blacklodge_model.name}-{blacklodge_model.version}"
+        #return f"{blacklodge_model.name}-kollialias"
+
+    def get_platform(self):
+        return self.platform
+    def get_environment(self):
+        return self.environment
+
+class Stratos_Application_Values_ForAlias(object):
+    platform: str = field(default="eds")
+    account_id: str = field(default="1111111")
+    allowed_cluster_types: List[str] = field(default=["blacklodge"])
+    environment: str = field(init=False)
+    helm_repositry: str = field(
+        default="oci://867531445002.dkr.ecr.us-east-1.amazonaws.com/internal/helm/eds/blacklodge"
+    )
+
+    def __attrs_post_init__(self):
+        runtime_env = Runtime_Environment_Detector.detect()
+        if (
+            runtime_env == Runtime_Environment.CLOUD9
+            or runtime_env == Runtime_Environment.LOCAL_DOCKER
+            or runtime_env == Runtime_Environment.LOCAL_MAC
+        ):
+            self.environment = "nonprod"
+        elif runtime_env == Runtime_Environment.STRATOS:
+            self.environment = "prod"
+
+    def get_project_identifier(self, blacklodge_user: Blacklodge_User):
+        return blacklodge_user.get_teamname()
+    def get_mnamespace_identifier(self, blacklodge_user: Blacklodge_User):
+        return blacklodge_user.get_teamname()
+    def get_application_name(self, blacklodge_model: Blacklodge_Model):
         return f"{blacklodge_model.name}-kollialias"
+
     def get_platform(self):
         return self.platform
     def get_environment(self):
@@ -627,10 +660,10 @@ class Container_Deploy_Data_For_Stratos_Api_V1(object):
     blacklodge_model: Blacklodge_Model = field()
     blacklodge_user: Blacklodge_User = field()
     chart_version: str = field(default="0.3.25")
+    bl_object: str = field(default="deployment")
 
     def get_stratos_application_name(self) -> str:
         return self.stratos_application_values.get_application_name(self.blacklodge_model)
-        #return f"{self.blacklodge_model.name}-kollialias"
 
     def get_stratos_namespace_name(
         self,
@@ -664,13 +697,19 @@ class Container_Deploy_Data_For_Stratos_Api_V1(object):
         return self.blacklodge_model.user_email[0]
 
     def get_chart_yaml_contents(self):
-        #chart_yaml = self._generate_chart_yaml()
-        chart_yaml = self._generate_alias_chart_yaml()
+        #if self.bl_object == "deployment":
+        #    chart_yaml = self._generate_chart_yaml()
+        #else:
+        #    chart_yaml = self._generate_alias_chart_yaml()
+        chart_yaml = self._generate_chart_yaml()
         return base64.urlsafe_b64encode(chart_yaml.encode()).decode()
 
     def get_value_yaml_contents(self):
-        #values_yaml = self._generate_values_yaml()
-        values_yaml = self._generate_alias_values_yaml()
+        #if self.bl_object == "deployment":
+        #    values_yaml = self._generate_values_yaml()
+        #else:
+        #    values_yaml = self._generate_alias_values_yaml()
+        values_yaml = self._generate_values_yaml()
         return base64.urlsafe_b64encode(values_yaml.encode()).decode()
 
     def _generate_alias_values_yaml(self) -> str:
@@ -679,7 +718,7 @@ class Container_Deploy_Data_For_Stratos_Api_V1(object):
         """
 
         values_yaml_dict = {
-            f"blacklodge-user-{self.blacklodge_model.object_type.value}": {
+            f"blacklodge-user-alias": {
                 "modelName": f"{self.blacklodge_model.name}",
                 "modelVersion": self.blacklodge_model.version,
                 "aliasName": "kollialias",
@@ -697,15 +736,15 @@ class Container_Deploy_Data_For_Stratos_Api_V1(object):
         dependencies_list = [
             {
                 "name": f"blacklodge-user-alias",
-                "version": "0.2.2",
+                "version": "0.2.4",
                 "repository": "oci://867531445002.dkr.ecr.us-east-1.amazonaws.com/internal/helm/eds/blacklodge"
             }
         ]
 
         chart_dict = {
             "apiVersion" : "v2",
-            "name": f"blacklodge-{self.blacklodge_model.object_type}-{self.blacklodge_model.name}",
-            "description": "Auto-generated template for blacklodge deployment",
+            "name": f"blacklodge-{self.blacklodge_model.name}-alias",
+            "description": "chart defn 2",
             "type": "application",
             "version": "1.0.0",
             "appVersion": f"{self.blacklodge_model.version}.0.0",
@@ -733,8 +772,8 @@ class Container_Deploy_Data_For_Stratos_Api_V1(object):
         clean_environment = "prod" if self.stratos_application_values.environment == "prod" else "nonprod"
 
         host_list = [
-            {"host": f"blacklodge.apps.{clean_environment}.stratos.prci.com", "paths": [{"path": f"/v1/pipelines/{self.blacklodge_model.name}/versions/{self.blacklodge_model.version}", "pathType": "Prefix"}]},
-            {"host": f"blacklodge.apps.{clean_environment}.stratos.prci.com", "paths": [{"path": f"/v1/pipelines/{self.blacklodge_model.name}/versions/skollialias", "pathType": "Prefix"}]}
+            {"host": f"mlcore-{clean_environment}.apps.{clean_environment}.stratos.prci.com", "paths": [{"path": f"/v1/pipelines/{self.blacklodge_model.name}/versions/{self.blacklodge_model.version}", "pathType": "Prefix"}]},
+            {"host": f"mlcore-{clean_environment}.apps.{clean_environment}.stratos.prci.com", "paths": [{"path": f"/v1/pipelines/{self.blacklodge_model.name}/versions/skollialias", "pathType": "Prefix"}]},
         ]
 
         ingress_dict = {
@@ -797,7 +836,6 @@ class Container_Deploy_Data_For_Stratos_Api_V1(object):
                 "repository":self.stratos_application_values.helm_repositry
             }
         ]
-        print(dependencies_list)
 
         chart_dict = {
             "apiVersion" : "v2",
@@ -813,6 +851,7 @@ class Container_Deploy_Data_For_Stratos_Api_V1(object):
 
 
 class Container_Deployer(object):
+
     def __init__(self) -> None:
         pass
 
@@ -891,6 +930,7 @@ class Stratos_Api_V1_Util(object):
                 json_data=data,
             )
             if response.status_code == 200:
+                print(endpoint)
                 print(response.status_code)
                 print(response.text)
                 return Ok(True)
@@ -909,6 +949,7 @@ class Stratos_Api_V1_Util(object):
                 json_data=data,
             )
             if response.status_code == 200:
+                print(endpoint)
                 print(response.status_code)
                 print(response.text)
                 return Ok(True)
@@ -1104,18 +1145,7 @@ class Stratos_Api_V1_Container_Deployer(Container_Deployer):
                         namespace_identifier=self.data.get_stratos_namespace_name(),
                         project_identifier=self.data.get_stratos_project_identifier(),
                     )
-                    deploy_dict = {
-                        "platform" : self.data.get_stratos_platform(),
-                        "application_name" : self.data.get_stratos_application_name(),
-                        "environemnt_name" : self.data.get_stratos_environment(),
-                        "project_identifier" : self.data.get_stratos_project_identifier(),
-                        "namespace_identifier" : self.data.get_stratos_namespace_name(),
-                        "is_dynamic_environment" : False,
-                        "dynamic_environment_name" : "",
-                        "base64_chart_yaml_contents" : self.data.get_chart_yaml_contents(),
-                        "base64_values_yaml_contents" : self.data.get_value_yaml_contents(),
-                        "cluster_type" : self.data.get_stratos_cluster_type(),
-                    }
+                    print(helm_data)
                     util.deploy_helm_chart_and_values(helm_data)
 
                     app_sync_request = Stratos_AppSyncArgoRequest_V1(

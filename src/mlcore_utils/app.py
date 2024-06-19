@@ -32,6 +32,7 @@ from mlcore_utils.model.stratos import (
     Stratos_Api_V1_Container_Builder,
     Stratos_Api_V1_Container_Deployer,
     Stratos_Application_Values,
+    Stratos_Application_Values_ForAlias,
 )
 
 
@@ -42,6 +43,9 @@ logger = logging.getLogger(__name__)
 
 
 def register(access_token):
+    USER_POOL_ID_PARAM_NAME="user_pool_id"
+    AWS_SECMGR_GH_SECRET_ID="mlcore-infra"
+    AWS_SECMGR_GH_SECRET_KEY="access_token"
     GH_SERVICE_ACCOUNT = "gh_service_account"
     STRATOS_SECRET_NAME = "stratos_api_key"
     STRATOS_SECRET_KEY = "API_KEY"
@@ -50,7 +54,7 @@ def register(access_token):
     creds: AWS_Credentials = AWS_Credentials.inject_aws_credentials(logger)
     ssm_util = AWS_System_Manager(creds, logger)
     gh_secrets_getter = AWS_SecretsManager_Secret_Getter(
-        creds, "mlcore-infra", "access_token", logger
+        creds, AWS_SECMGR_GH_SECRET_ID,AWS_SECMGR_GH_SECRET_KEY, logger
     )
     gh_service_account_result = ssm_util.get_parameter_value(GH_SERVICE_ACCOUNT)
     if is_err(gh_service_account_result):
@@ -64,7 +68,7 @@ def register(access_token):
         blacklodge_model = Blacklodge_Model.from_toml_file(blacklodge_file, github_auth)
         opa_handler = get_opa_handler_env_based(logger)
 
-        user_pool_id_result = ssm_util.get_parameter_value("user_pool_id")
+        user_pool_id_result = ssm_util.get_parameter_value(USER_POOL_ID_PARAM_NAME)
         if is_err(user_pool_id_result):
             raise Exception("Could not find User Pool Id in AWS SSM")
         aws_util_for_cognito = AWS_Utils(creds, "cognito-idp", logger)
@@ -120,7 +124,9 @@ def register(access_token):
         print("User Does not permission")
 
 
-def deploy(access_token):
+def deploy(access_token, mode):
+
+
     USER_POOL_ID_PARAM_NAME="user_pool_id"
     AWS_SECMGR_GH_SECRET_ID="mlcore-infra"
     AWS_SECMGR_GH_SECRET_KEY="access_token"
@@ -152,7 +158,12 @@ def deploy(access_token):
         )
 
         blacklodge_model = Blacklodge_Model.from_toml_file(blacklodge_file, github_auth)
+        #if mode == "deployment":
+        #    stratos_api_values: Stratos_Application_Values = Stratos_Application_Values()
+        #else:
+        #    stratos_api_values: Stratos_Application_Values_ForAlias = Stratos_Application_Values_ForAlias()
         stratos_api_values: Stratos_Application_Values = Stratos_Application_Values()
+
         stratos_secret_getter = AWS_SecretsManager_Secret_Getter(
             credentials=creds,
             secret_name=STRATOS_SECRET_NAME,
@@ -168,7 +179,8 @@ def deploy(access_token):
             aws_constants=AWS_Accounts_For_Blacklodge.create_from_runtime_environment(),
             blacklodge_model=blacklodge_model,
             blacklodge_user=blacklodge_user,
-            splunk_constants=Splunk_Constants()
+            splunk_constants=Splunk_Constants(),
+            bl_object=mode
         )
         deployer = Stratos_Api_V1_Container_Deployer(
             container_deploy_data_for_stratos_api=data,
@@ -208,9 +220,10 @@ def _init_reqd_objects(token):
 
 
 def _main():
-    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiJjMTkwYzk5Yy1mOTdjLTQyNGMtOGQ5Ny04YjY0ODYzNzc0ZGEiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxODczMzM1OCwiZXhwIjoxNzE4Nzc2NTU4LCJpYXQiOjE3MTg3MzMzNTgsImp0aSI6IjQ4YjFlYmIzLThlYzUtNGU1YS05YmRhLWZmYTNmYmFjNzg4ZCIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.iLICRTwWzJwNLp332_Qg6q-kdBA24eC1ccFuObSgUME2xTtTYQjtO9hbhKv3yipwnSpXja6s024UpBdlHtvifEVGKbMTZUeFIiAO7AO7jSbsZEM30xxmgunuilHx_IAWfa_ntuHJkWE-rEc7N3zUFZV8p7K0yLKI-74vB1sVQhtNHu0vZasbEtcfTLL8spHan-sMMkHfD9pk7J14S1Lfzfyxsz-2Y0BzmiIFwXZKeQjM6uk4FHpQ4IZ0VQ3S4NKANFnFy3m4wiWmRHgPcb6gtacfi5Pn9axXky2IlEt33kamE3A0K0XksSaElJZmthISjStZwee3NL8v8sLBo4w7gA"
-    # register(token)
-    deploy(token)
+    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiI3YjczODFjOC01MGNkLTQ2MjMtOGU3NS1lZGYwOTE5NGE1NGIiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxODgwMTUyMywiZXhwIjoxNzE4ODQ0NzIzLCJpYXQiOjE3MTg4MDE1MjMsImp0aSI6IjM5YWUwN2U0LTg5YmQtNDg5OC1iOGEwLWJiYjNlMDFiNjE1ZCIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.L8jToErYHLj7GmLs-lXyDiBgR3yoHh_H7oe0jml2RJfDr3fKNsswQqkhx6157KBCZPXhXoCC5mHXK2zE_0CIXwcDfwXuOCNuC-GCQQmMbn2oqSsirOVg2uZpeiXg5SBX06cAD1TJWGEgteKKOtJZ3y2j9vCMh3ymOI9tiRejShqysZZ_LfzozaPJDq5-HE96bsVwnWutxUyDocGt8xUXxSDVvBDQio1bsSPRqaLifgAsSQBNR3SSN3cIgzMK1SYSI0_qKjIXtGgvfG_gSUuuYDHT_PZJG2UBZpV1MEMJ8wzxoFfC2PBAc12LBkzJ6ZIEgmobEbSzsTHWdMdkYn73Ew"
+    #register(token)
+    #deploy(token, "deployment")
+    deploy(token, "not-deployment")
     #argocd_test()
 
 
