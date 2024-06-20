@@ -39,7 +39,7 @@ class BL_Model(object):
 @pytest.fixture
 def bl_model():
     version = "dev"
-    name="bl-test-ap-dev"
+    name="a123662"
     return BL_Model(name, version)
 
 

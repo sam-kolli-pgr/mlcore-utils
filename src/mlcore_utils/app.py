@@ -12,7 +12,6 @@ from mlcore_utils.model.gh import GitHub_Repo, GitHub_Auth
 from mlcore_utils.model.aws import (
     AWS_Accounts_For_Blacklodge,
     AWS_Credentials,
-    AWS_Default_Credentials,
     AWS_S3_Util,
     AWS_SecretsManager_Secret_Getter,
     AWS_System_Manager,
@@ -26,14 +25,11 @@ from mlcore_utils.model.stratos import (
     ArgoCD_Api_Caller,
     ArgoCD_Util,
     Container_Build_Data_For_Stratos_Api_V1,
-    Container_Deploy_Data_For_Stratos_Api_V1,
     Splunk_Constants,
     Stratos_Api_Caller,
     Stratos_Api_V1_Blacklodge_Application_Deployer,
     Stratos_Api_V1_Container_Builder,
-    Stratos_Api_V1_Container_Deployer,
     Stratos_Application_Values,
-    Stratos_Application_Values_ForAlias,
 )
 
 
@@ -129,72 +125,6 @@ def register(access_token):
         print("User Does not permission")
 
 
-def deploy(access_token, mode):
-
-    USER_POOL_ID_PARAM_NAME = "user_pool_id"
-    AWS_SECMGR_GH_SECRET_ID = "mlcore-infra"
-    AWS_SECMGR_GH_SECRET_KEY = "access_token"
-    GH_SERVICE_ACCOUNT = "gh_service_account"
-    STRATOS_SECRET_NAME = "stratos_api_key"
-    STRATOS_SECRET_KEY = "API_KEY"
-    blacklodge_file = "../../tests/resources/a123662_testpipeline/Blacklodgefile"
-
-    creds: AWS_Credentials = AWS_Credentials.inject_aws_credentials(logger)
-    ssm_util = AWS_System_Manager(creds, logger)
-    gh_service_account_result = ssm_util.get_parameter_value(GH_SERVICE_ACCOUNT)
-    if is_err(gh_service_account_result):
-        print(gh_service_account_result.err_value)
-        raise Exception(gh_service_account_result.err_value)
-
-    if is_ok(gh_service_account_result):
-        gh_secrets_getter = AWS_SecretsManager_Secret_Getter(
-            creds, AWS_SECMGR_GH_SECRET_ID, AWS_SECMGR_GH_SECRET_KEY, logger
-        )
-        github_auth = GitHub_Auth.get_from_username_and_secret_getter(
-            gh_service_account_result.ok_value, gh_secrets_getter
-        )
-        user_pool_id_result = ssm_util.get_parameter_value(USER_POOL_ID_PARAM_NAME)
-        if is_err(user_pool_id_result):
-            raise Exception(
-                f"Could not find param {USER_POOL_ID_PARAM_NAME} which is required to get User Pool Id"
-            )
-        aws_util_for_cognito = AWS_Utils(creds, "cognito-idp", logger)
-        blacklodge_user = Blacklodge_User.create_from_cognito_saml_token(
-            user_pool_id_result.ok_value, aws_util_for_cognito, access_token
-        )
-
-        blacklodge_model = Blacklodge_Model.from_toml_file(blacklodge_file, github_auth)
-        # if mode == "deployment":
-        #    stratos_api_values: Stratos_Application_Values = Stratos_Application_Values()
-        # else:
-        #    stratos_api_values: Stratos_Application_Values_ForAlias = Stratos_Application_Values_ForAlias()
-        stratos_api_values: Stratos_Application_Values = Stratos_Application_Values()
-
-        stratos_secret_getter = AWS_SecretsManager_Secret_Getter(
-            credentials=creds,
-            secret_name=STRATOS_SECRET_NAME,
-            secret_key=STRATOS_SECRET_KEY,
-            logger=logger,
-        )
-        api_caller = Stratos_Api_Caller(secret_getter=stratos_secret_getter)
-
-        data = Container_Deploy_Data_For_Stratos_Api_V1(
-            stratos_application_values=stratos_api_values,
-            aws_constants=AWS_Accounts_For_Blacklodge.create_from_runtime_environment(),
-            blacklodge_model=blacklodge_model,
-            blacklodge_user=blacklodge_user,
-            splunk_constants=Splunk_Constants(),
-            bl_object=mode,
-        )
-        deployer = Stratos_Api_V1_Container_Deployer(
-            container_deploy_data_for_stratos_api=data,
-            stratos_api_caller=api_caller,
-        )
-        deployer.deploy_container_image()
-    else:
-        print("GH Service Accoutn Error")
-
-
 def deploy_v2(access_token):
 
     USER_POOL_ID_PARAM_NAME = "user_pool_id"
@@ -286,9 +216,8 @@ def _init_reqd_objects(token):
 
 
 def _main():
-    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiI5ODIxMmUyZi0wZDg2LTQyNTMtODAxOC02Y2M2OGJmMzI5OGQiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxODg0MzQwMSwiZXhwIjoxNzE4ODg2NjAxLCJpYXQiOjE3MTg4NDM0MDEsImp0aSI6IjBjN2M2MmY3LWUwODEtNDdiZi1hNmU2LTUyNGI5ZmE4MTcxZCIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.gkj0SnvHt3h-adBcbWLJtcvhtHjHSZpXV5fXnUP5mHKzNHhTWsGh__X1Ex_zEgaSW79LLIwXU2DRtl54mszqgKdpAqQ6hFUz1hmj1CkFRsQNyS4egEPhP2eRmoJbXR8XzjgRvEd0dAIBVI6cPXHGeLCuaa6J93BCylgvKlGxtnzsOwHeowLFnEvTJ2BC6Ix5mn72tFWyplLjE0jqVwZ-g7-EH29VvWNtyCQyuTw2m2e1ozVp-KaRi5XolkooSo-MEEzI1orZhOeWTGM4hhOWzUrlIDNzhndhLkacIPKjKXtQW6OuqEioxkQfKNZBP5Q1ZT8-LMWdFT8CYpGCf9_TZQ"
-    #register(token)
-    # deploy(token, "deployment")
+    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiIxYmVhMGVmZi02NTY5LTQ2ZmQtYjNkZC0yODAyZDhiYzY1ZTQiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxODkxMjE0OSwiZXhwIjoxNzE4OTU1MzQ5LCJpYXQiOjE3MTg5MTIxNDksImp0aSI6IjliYTVlYjJiLWViOGMtNDJmNS05ZWUxLWQ4Mjg4OWU1NmZkMiIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.PjxJO2vc4DMiSUkdQih8G3mxxoBrS1r8x7n9DYSEZN5Hz8KLxMAjozZm2XaFSctmopuxjAbRG_7cPxmz5cEvN6T5wlVKaKERt8EALTxmmX6WTVYkbsFt0zYsGz4_5mMbll-mpz4vt2x0zV0zuyH14_78qw5VZcbXttaaigURfVfZDiI4AZwqHABRg6Pj-0N6ahAudj-WzEGsBPrpyUb9AIRgFGobOpUkGnaVoWLMH0BeIDxGesTHnEl-jRZTith-ALjFq6r2KmcVGSEb20Oj_7kF6o0qZWu1u_g9NIR8z9OZFTqCWtKk2GYeKvQfidxKDQjrdKw7dPnBscJeAXvuXg"
+    register(token)
     deploy_v2(token)
     # argocd_test()
 
