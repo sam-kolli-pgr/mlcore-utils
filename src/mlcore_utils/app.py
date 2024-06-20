@@ -29,6 +29,7 @@ from mlcore_utils.model.stratos import (
     Container_Deploy_Data_For_Stratos_Api_V1,
     Splunk_Constants,
     Stratos_Api_Caller,
+    Stratos_Api_V1_Blacklodge_Application_Deployer,
     Stratos_Api_V1_Container_Builder,
     Stratos_Api_V1_Container_Deployer,
     Stratos_Application_Values,
@@ -42,10 +43,14 @@ import requests
 logger = logging.getLogger(__name__)
 
 
+def register_v2(access_token):
+    pass
+
+
 def register(access_token):
-    USER_POOL_ID_PARAM_NAME="user_pool_id"
-    AWS_SECMGR_GH_SECRET_ID="mlcore-infra"
-    AWS_SECMGR_GH_SECRET_KEY="access_token"
+    USER_POOL_ID_PARAM_NAME = "user_pool_id"
+    AWS_SECMGR_GH_SECRET_ID = "mlcore-infra"
+    AWS_SECMGR_GH_SECRET_KEY = "access_token"
     GH_SERVICE_ACCOUNT = "gh_service_account"
     STRATOS_SECRET_NAME = "stratos_api_key"
     STRATOS_SECRET_KEY = "API_KEY"
@@ -54,7 +59,7 @@ def register(access_token):
     creds: AWS_Credentials = AWS_Credentials.inject_aws_credentials(logger)
     ssm_util = AWS_System_Manager(creds, logger)
     gh_secrets_getter = AWS_SecretsManager_Secret_Getter(
-        creds, AWS_SECMGR_GH_SECRET_ID,AWS_SECMGR_GH_SECRET_KEY, logger
+        creds, AWS_SECMGR_GH_SECRET_ID, AWS_SECMGR_GH_SECRET_KEY, logger
     )
     gh_service_account_result = ssm_util.get_parameter_value(GH_SERVICE_ACCOUNT)
     if is_err(gh_service_account_result):
@@ -126,10 +131,9 @@ def register(access_token):
 
 def deploy(access_token, mode):
 
-
-    USER_POOL_ID_PARAM_NAME="user_pool_id"
-    AWS_SECMGR_GH_SECRET_ID="mlcore-infra"
-    AWS_SECMGR_GH_SECRET_KEY="access_token"
+    USER_POOL_ID_PARAM_NAME = "user_pool_id"
+    AWS_SECMGR_GH_SECRET_ID = "mlcore-infra"
+    AWS_SECMGR_GH_SECRET_KEY = "access_token"
     GH_SERVICE_ACCOUNT = "gh_service_account"
     STRATOS_SECRET_NAME = "stratos_api_key"
     STRATOS_SECRET_KEY = "API_KEY"
@@ -144,23 +148,25 @@ def deploy(access_token, mode):
 
     if is_ok(gh_service_account_result):
         gh_secrets_getter = AWS_SecretsManager_Secret_Getter(
-            creds, AWS_SECMGR_GH_SECRET_ID,AWS_SECMGR_GH_SECRET_KEY, logger
+            creds, AWS_SECMGR_GH_SECRET_ID, AWS_SECMGR_GH_SECRET_KEY, logger
         )
         github_auth = GitHub_Auth.get_from_username_and_secret_getter(
             gh_service_account_result.ok_value, gh_secrets_getter
         )
         user_pool_id_result = ssm_util.get_parameter_value(USER_POOL_ID_PARAM_NAME)
         if is_err(user_pool_id_result):
-            raise Exception(f"Could not find param {USER_POOL_ID_PARAM_NAME} which is required to get User Pool Id")
+            raise Exception(
+                f"Could not find param {USER_POOL_ID_PARAM_NAME} which is required to get User Pool Id"
+            )
         aws_util_for_cognito = AWS_Utils(creds, "cognito-idp", logger)
         blacklodge_user = Blacklodge_User.create_from_cognito_saml_token(
             user_pool_id_result.ok_value, aws_util_for_cognito, access_token
         )
 
         blacklodge_model = Blacklodge_Model.from_toml_file(blacklodge_file, github_auth)
-        #if mode == "deployment":
+        # if mode == "deployment":
         #    stratos_api_values: Stratos_Application_Values = Stratos_Application_Values()
-        #else:
+        # else:
         #    stratos_api_values: Stratos_Application_Values_ForAlias = Stratos_Application_Values_ForAlias()
         stratos_api_values: Stratos_Application_Values = Stratos_Application_Values()
 
@@ -170,9 +176,7 @@ def deploy(access_token, mode):
             secret_key=STRATOS_SECRET_KEY,
             logger=logger,
         )
-        api_caller = Stratos_Api_Caller(
-            secret_getter=stratos_secret_getter
-        )
+        api_caller = Stratos_Api_Caller(secret_getter=stratos_secret_getter)
 
         data = Container_Deploy_Data_For_Stratos_Api_V1(
             stratos_application_values=stratos_api_values,
@@ -180,13 +184,76 @@ def deploy(access_token, mode):
             blacklodge_model=blacklodge_model,
             blacklodge_user=blacklodge_user,
             splunk_constants=Splunk_Constants(),
-            bl_object=mode
+            bl_object=mode,
         )
         deployer = Stratos_Api_V1_Container_Deployer(
             container_deploy_data_for_stratos_api=data,
             stratos_api_caller=api_caller,
         )
         deployer.deploy_container_image()
+    else:
+        print("GH Service Accoutn Error")
+
+
+def deploy_v2(access_token):
+
+    USER_POOL_ID_PARAM_NAME = "user_pool_id"
+    AWS_SECMGR_GH_SECRET_ID = "mlcore-infra"
+    AWS_SECMGR_GH_SECRET_KEY = "access_token"
+    GH_SERVICE_ACCOUNT = "gh_service_account"
+    STRATOS_SECRET_NAME = "stratos_api_key"
+    STRATOS_SECRET_KEY = "API_KEY"
+    blacklodge_file = "../../tests/resources/a123662_testpipeline/Blacklodgefile"
+
+    creds: AWS_Credentials = AWS_Credentials.inject_aws_credentials(logger)
+    ssm_util = AWS_System_Manager(creds, logger)
+    gh_service_account_result = ssm_util.get_parameter_value(GH_SERVICE_ACCOUNT)
+    if is_err(gh_service_account_result):
+        print(gh_service_account_result.err_value)
+        raise Exception(gh_service_account_result.err_value)
+
+    if is_ok(gh_service_account_result):
+        gh_secrets_getter = AWS_SecretsManager_Secret_Getter(
+            creds, AWS_SECMGR_GH_SECRET_ID, AWS_SECMGR_GH_SECRET_KEY, logger
+        )
+        github_auth = GitHub_Auth.get_from_username_and_secret_getter(
+            gh_service_account_result.ok_value, gh_secrets_getter
+        )
+        user_pool_id_result = ssm_util.get_parameter_value(USER_POOL_ID_PARAM_NAME)
+        if is_err(user_pool_id_result):
+            raise Exception(
+                f"Could not find param {USER_POOL_ID_PARAM_NAME} which is required to get User Pool Id"
+            )
+        aws_util_for_cognito = AWS_Utils(creds, "cognito-idp", logger)
+        blacklodge_user = Blacklodge_User.create_from_cognito_saml_token(
+            user_pool_id_result.ok_value, aws_util_for_cognito, access_token
+        )
+
+        blacklodge_model = Blacklodge_Model.from_toml_file(blacklodge_file, github_auth)
+        stratos_application_values: Stratos_Application_Values = (
+            Stratos_Application_Values()
+        )
+
+        stratos_secret_getter = AWS_SecretsManager_Secret_Getter(
+            credentials=creds,
+            secret_name=STRATOS_SECRET_NAME,
+            secret_key=STRATOS_SECRET_KEY,
+            logger=logger,
+        )
+        api_caller = Stratos_Api_Caller(secret_getter=stratos_secret_getter)
+
+        deployer = Stratos_Api_V1_Blacklodge_Application_Deployer(
+            stratos_application_values=stratos_application_values,
+            aws_constants=AWS_Accounts_For_Blacklodge.create_from_runtime_environment(),
+            splunk_constants=Splunk_Constants(),
+            blacklodge_model=blacklodge_model,
+            blacklodge_user=blacklodge_user,
+            stratos_api_caller=api_caller,
+        )
+        deployer.deploy_namespace()
+        deployer.deploy_pipeline()
+        deployer.deploy_alias()
+
     else:
         print("GH Service Accoutn Error")
 
@@ -207,24 +274,23 @@ def argocd_test():
     argocd_util = ArgoCD_Util(stratos_application_values, argocd_api_caller)
     result = argocd_util.get_application_status()
 
+
 def _init_reqd_objects(token):
-    USER_POOL_ID_PARAM_NAME="user_pool_id"
-    AWS_SECMGR_GH_SECRET_ID="mlcore-infra"
-    AWS_SECMGR_GH_SECRET_KEY="access_token"
+    USER_POOL_ID_PARAM_NAME = "user_pool_id"
+    AWS_SECMGR_GH_SECRET_ID = "mlcore-infra"
+    AWS_SECMGR_GH_SECRET_KEY = "access_token"
     GH_SERVICE_ACCOUNT = "gh_service_account"
     STRATOS_SECRET_NAME = "stratos_api_key"
     STRATOS_SECRET_KEY = "API_KEY"
     blacklodge_file = "../../tests/resources/a123662_testpipeline/Blacklodgefile"
 
 
-
-
 def _main():
-    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiI3YjczODFjOC01MGNkLTQ2MjMtOGU3NS1lZGYwOTE5NGE1NGIiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxODgwMTUyMywiZXhwIjoxNzE4ODQ0NzIzLCJpYXQiOjE3MTg4MDE1MjMsImp0aSI6IjM5YWUwN2U0LTg5YmQtNDg5OC1iOGEwLWJiYjNlMDFiNjE1ZCIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.L8jToErYHLj7GmLs-lXyDiBgR3yoHh_H7oe0jml2RJfDr3fKNsswQqkhx6157KBCZPXhXoCC5mHXK2zE_0CIXwcDfwXuOCNuC-GCQQmMbn2oqSsirOVg2uZpeiXg5SBX06cAD1TJWGEgteKKOtJZ3y2j9vCMh3ymOI9tiRejShqysZZ_LfzozaPJDq5-HE96bsVwnWutxUyDocGt8xUXxSDVvBDQio1bsSPRqaLifgAsSQBNR3SSN3cIgzMK1SYSI0_qKjIXtGgvfG_gSUuuYDHT_PZJG2UBZpV1MEMJ8wzxoFfC2PBAc12LBkzJ6ZIEgmobEbSzsTHWdMdkYn73Ew"
+    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiI5ODIxMmUyZi0wZDg2LTQyNTMtODAxOC02Y2M2OGJmMzI5OGQiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxODg0MzQwMSwiZXhwIjoxNzE4ODg2NjAxLCJpYXQiOjE3MTg4NDM0MDEsImp0aSI6IjBjN2M2MmY3LWUwODEtNDdiZi1hNmU2LTUyNGI5ZmE4MTcxZCIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.gkj0SnvHt3h-adBcbWLJtcvhtHjHSZpXV5fXnUP5mHKzNHhTWsGh__X1Ex_zEgaSW79LLIwXU2DRtl54mszqgKdpAqQ6hFUz1hmj1CkFRsQNyS4egEPhP2eRmoJbXR8XzjgRvEd0dAIBVI6cPXHGeLCuaa6J93BCylgvKlGxtnzsOwHeowLFnEvTJ2BC6Ix5mn72tFWyplLjE0jqVwZ-g7-EH29VvWNtyCQyuTw2m2e1ozVp-KaRi5XolkooSo-MEEzI1orZhOeWTGM4hhOWzUrlIDNzhndhLkacIPKjKXtQW6OuqEioxkQfKNZBP5Q1ZT8-LMWdFT8CYpGCf9_TZQ"
     #register(token)
-    #deploy(token, "deployment")
-    deploy(token, "not-deployment")
-    #argocd_test()
+    # deploy(token, "deployment")
+    deploy_v2(token)
+    # argocd_test()
 
 
 if __name__ == "__main__":

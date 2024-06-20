@@ -46,6 +46,7 @@ class Blacklodge_Container(object):
         self.github_repo = GitHub_Repo.get_from_inputs(
             git_repo_url=self.git_repo_address, github_auth=self.github_auth
         )
+
     def initialize_github_repo(self, github_auth: GitHub_Auth):
         self.github_repo = GitHub_Repo.get_from_inputs(
             git_repo_url=self.git_repo_address, github_auth=self.github_auth
@@ -105,7 +106,7 @@ class Pipeline_Runtime_Config:
     max_memory_mb: Optional[int] = field(default=1500)
     replicas: Optional[int] = field(default=None)
     inputs: Optional[Any] = field(default=None)
-    otel_tracing : bool = field(default=False)
+    otel_tracing: bool = field(default=False)
 
     def __attrs_post_init__(self):
         if self.replicas and self.minimum_replicas:
@@ -123,13 +124,13 @@ class Pipeline_Runtime_Config:
                 and self.min_memory_mb
                 and self.max_memory_mb
             ):
-                #if self.cpu < 0.5 or self.cpu > 8.0:
+                # if self.cpu < 0.5 or self.cpu > 8.0:
                 #    raise ValueError("cpu value should be between 0.5 and 8.0")
                 if self.target_cpu_utilization < 40 or self.target_cpu_utilization > 90:
                     raise ValueError(
                         "target_cpu_utilization value should be between 40 and 90"
                     )
-                #if self.memory < 1 or self.memory > 60:
+                # if self.memory < 1 or self.memory > 60:
                 #    raise ValueError("memory value should be between 1 and 60")
                 if not (self.minimum_replicas > 0):
                     raise ValueError("min_replicas should be more than 0")
@@ -163,7 +164,7 @@ class Pipeline_Runtime_Config:
         replicas,
         inputs,
     ):
-        p= Pipeline_Runtime_Config(
+        p = Pipeline_Runtime_Config(
             blacklodge_container=blacklodge_container,
             minimum_replicas=minimum_replicas,
             maximum_replicas=maximum_replicas,
@@ -223,6 +224,20 @@ class Blacklodge_Model:
     def __attrs_post_init__(self):
         pass
 
+    def get_container_image_name(self):
+        return f"blacklodge-{self.object_type.value}-{self.name}"
+
+    def get_container_tag(self):
+        return f"{self.version}"
+
+    def get_ecr_image_path(
+        self,
+        aws_accounts_for_blacklodge: AWS_Accounts_For_Blacklodge,
+        platform: str,
+        namespace: str,
+    ):
+        return f"{aws_accounts_for_blacklodge.ecr_account}.dkr.ecr.us-east-1.amazonaws.com/internal/containerimages/{platform}/{namespace}/blacklodge-{self.object_type.value}-{self.name}:{self.version}"
+
     def initialize_github_repo(self, github_auth: GitHub_Auth):
         self.git_repo = GitHub_Repo.get_from_inputs(
             git_repo_url=self.git_repo_url,
@@ -231,15 +246,15 @@ class Blacklodge_Model:
             github_auth=github_auth,
         )
 
-
     @name.validator
     def validate_name(self, attribute, value):
         if "_" in value:
             raise ValueError("Model/Pipline/Job name cannot contain underscores.")
 
     @staticmethod
-    def from_dict(data, github_auth : GitHub_Auth):
+    def from_dict(data, github_auth: GitHub_Auth):
         name = data["model"]["name"]
+        version = data["model"]["version"]
 
         git_repo_url = data["model"]["git_repo_url"]
         git_repo_branch = (
@@ -340,7 +355,7 @@ class Blacklodge_Model:
 
         model = Blacklodge_Model(
             name=name,
-            version=3,
+            version=version,
             python_version="3.9",
             git_repo_url=git_repo_url,
             git_repo_branch=git_repo_branch,
