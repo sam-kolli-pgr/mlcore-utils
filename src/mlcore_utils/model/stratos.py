@@ -1,3 +1,4 @@
+from __future__ import annotations
 from abc import ABC, abstractmethod
 import base64
 from enum import Enum
@@ -83,6 +84,264 @@ class Stratos_Application_Values(object):
 
     def get_environment(self):
         return self.environment
+
+
+@define
+class Helm_Repo_Deployer(object):
+    helm_chart_type: Blacklodge_Helm_Chart_Type = field()
+    stratos_application_values: Stratos_Application_Values = field()
+    aws_constants: AWS_Accounts_For_Blacklodge = field()
+    splunk_constants: Splunk_Constants = field()
+
+    def _get_chart_version(self):
+        if self.helm_chart_type == Blacklodge_Helm_Chart_Type.PIPELINE:
+            return "0.3.25"
+        elif self.helm_chart_type == Blacklodge_Helm_Chart_Type.ALIAS:
+            return "0.2.4"
+        elif self.helm_chart_type == Blacklodge_Helm_Chart_Type.CRONJOB:
+            return "0.2.3"
+        elif self.helm_chart_type == Blacklodge_Helm_Chart_Type.JOB:
+            return "0.2.4"
+        elif self.helm_chart_type == Blacklodge_Helm_Chart_Type.NAMESPACE:
+            return "0.1.1"
+
+    def _get_dependencies_list(self):
+        dependencies_list = [
+            {
+                "name": self.helm_chart_type.value,
+                "version": self._get_chart_version(),
+                "repository": self.stratos_application_values.helm_repositry,
+            }
+        ]
+        return dependencies_list
+
+    def _get_chart_content(self):
+        chart_dict = {
+            "apiVersion": "v2",
+            "name": self.helm_chart_type.value,
+            "description": f"Auto-generated template for {self.helm_chart_type.value}",
+            "type": "application",
+            "version": "1.0.0",
+            "appVersion": "1.0.0",
+            "dependencies": self._get_dependencies_list(),
+        }
+        return chart_dict
+
+    def _get_values_content_for_pipeline(
+        self, blacklodge_model: Blacklodge_Model, blacklodge_user: Blacklodge_User
+    ):
+        """
+        Generates a helm values.yaml string from the provided inputs
+        """
+        namespace = blacklodge_user.get_teamname()
+
+        ## Generating yaml file for helm values
+        image_dict = {
+            "path": blacklodge_model.get_ecr_image_path(
+                self.aws_constants, self.stratos_application_values.platform, namespace
+            )
+        }
+
+        resources_dict = {
+            "limits": {
+                "cpu": str(blacklodge_model.runtime_config.max_cpu),
+                "memory": f"{int(blacklodge_model.runtime_config.max_memory_mb)}M",
+            },
+            "requests": {
+                "cpu": str(blacklodge_model.runtime_config.min_cpu),
+                "memory": f"{int(blacklodge_model.runtime_config.min_memory_mb)}M",
+            },
+        }
+
+        clean_environment = (
+            "prod"
+            if self.stratos_application_values.environment == "prod"
+            else "nonprod"
+        )
+
+        host_list = [
+            {
+                "host": f"mlcore-{clean_environment}.apps.{clean_environment}.stratos.prci.com",
+                "paths": [
+                    {
+                        "path": f"/v1/pipelines/{blacklodge_model.name}/versions/{blacklodge_model.version}",
+                        "pathType": "Prefix",
+                    }
+                ],
+            },
+        ]
+
+        ingress_dict = {"hosts": host_list}
+
+        values_yaml_dict = {
+            self.helm_chart_type.value: {
+                "replicaCount": str(blacklodge_model.runtime_config.replicas),
+                "fullnameOverride": f"{blacklodge_model.name}-{blacklodge_model.version}",
+                "environment": self.stratos_application_values.environment,
+                "splunk_environment": self.splunk_constants.environment,
+                "containerName": f"{blacklodge_model.name}-{blacklodge_model.version}",
+                "image": image_dict,
+                "resources": resources_dict,
+                "ingress": ingress_dict,
+                "envvars": [],
+            }
+        }
+
+        if blacklodge_model.runtime_config.minimum_replicas > 0:
+            autoscaling_dict = {
+                "enabled": True,
+                "minReplicas": blacklodge_model.runtime_config.minimum_replicas,
+                "maxReplicas": blacklodge_model.runtime_config.maximum_replicas,
+                "targetCPUUtilizationPercentage": str(
+                    blacklodge_model.runtime_config.target_cpu_utilization
+                ),
+                "targetMemoryUtilizationPercentage": str(
+                    blacklodge_model.runtime_config.target_memory_utilization
+                ),
+            }
+            values_yaml_dict[f"blacklodge-user-{blacklodge_model.object_type.value}"][
+                "autoscaling"
+            ] = autoscaling_dict
+
+        if blacklodge_model.runtime_config.inputs:
+            values_yaml_dict[self.helm_chart_type.value][
+                "envvars"
+            ] = blacklodge_model.runtime_config.inputs
+
+        ### OTEL Default variable
+        values_yaml_dict[self.helm_chart_type.value]["envvars"].append(
+            {
+                "name": "OTEL_RESOURCE_ATTRIBUTES",
+                "value": f"service.name=MLCore - {blacklodge_model.name}, service.namespace={namespace}, service.version={blacklodge_model.version}",
+            }
+        )
+
+        if not blacklodge_model.runtime_config.otel_tracing:
+            otel_dict = {"enabled": False}
+            values_yaml_dict[self.helm_chart_type.value]["monitoring"] = {
+                "otel": otel_dict
+            }
+            values_yaml_dict[self.helm_chart_type.value]["envvars"].append(
+                {"name": "OTEL_TRACES_SAMPLER", "value": "always_off"}
+            )
+
+        else:
+            values_yaml_dict[self.helm_chart_type.value]["envvars"].append(
+                {"name": "OTEL_TRACES_SAMPLER", "value": "always_on"}
+            )
+
+        return values_yaml_dict
+
+    def _get_values_content_for_alias(self, model_name, pipeline_alias: Pipeline_Alias):
+        """
+        Generates a helm values.yaml string from the provided inputs
+        """
+        values_yaml_dict = {
+            self.helm_chart_type.value: {
+                "modelName": model_name,
+                "modelVersion": pipeline_alias.version,
+                "aliasName": pipeline_alias.alias,
+                "environment": self.stratos_application_values.environment,
+                "modelPort": 8081,
+            }
+        }
+        return values_yaml_dict
+
+    def _get_values_content_for_namespace(self):
+        return None
+
+
+class Blacklodge_Image_For_Stratos(object):
+    def __init__(
+        self,
+        blacklodge_model: Blacklodge_Model,
+        aws_metadata: AWS_Accounts_For_Blacklodge,
+        blacklodge_business_unit: Blacklodge_BusinessUnit,
+        stratos_application_values: Stratos_Application_Values,
+        splunk_constants: Splunk_Constants,
+        helm_repo_deployer: Helm_Repo_Deployer,
+    ):
+        self.blacklodge_model: Blacklodge_Model = blacklodge_model
+        self.aws_metadata = aws_metadata
+        self.blacklodge_business_unit = blacklodge_business_unit
+        self.stratos_application_values = stratos_application_values
+        self.splunk_constants = splunk_constants
+        self.helm_repo_deployer = helm_repo_deployer
+
+    def get_docker_file_path(self):
+        """
+        This shud be for the blacklode_container. which wraps around
+        """
+        container = (
+            self.blacklodge_model.runtime_config.blacklodge_container.prebuilt_container.get_prebuilt_container()
+        )
+        dockerfile_path = f"./dockerfiles/{container}/Dockerfile"
+        return dockerfile_path
+
+    def get_git_branch(self):
+        git_branch = (
+            self.blacklodge_model.runtime_config.blacklodge_container.github_repo.git_repo_branch
+        )
+        return git_branch
+
+    def get_repository(self):
+        org = (
+            self.blacklodge_model.runtime_config.blacklodge_container.github_repo.github_organization.value
+        )
+        repo = (
+            self.blacklodge_model.runtime_config.blacklodge_container.github_repo.git_repo_name
+        )
+        return f"{org.upper() if org == 'pcdst' else org}/{repo}"
+
+    def get_docker_context(self):
+        ctx = self.blacklodge_model.runtime_config.blacklodge_container.context_path
+        return ctx
+
+    def get_image_name(self):
+        return f"blacklodge-{self.blacklodge_model.object_type.value}-{self.blacklodge_model.name}"
+
+    def get_image_tags(self):
+        return [self.blacklodge_model.version]
+
+    def get_git_commit_sha(self):
+        res = (
+            self.blacklodge_model.runtime_config.blacklodge_container.github_repo.get_commit_sha()
+        )
+        if is_ok(res):
+            return res.ok_value
+        elif is_err(res):
+            raise Exception("Error getting git commit sha " + res.err_value)
+        else:
+            raise Exception("Unknown error while getting git commit sha")
+
+    def get_namespace(self):
+        return self.blacklodge_business_unit.get_namespace()
+
+    def get_injected_aws_role_arn(self):
+        return "arn:aws:iam::004782836026:role/k8s-sa-mlcore-tgw-kaniko_build"
+
+    def get_injected_aws_account_short_alias(self):
+        return "aws0gd"
+
+    def get_build_args(self):
+        # default_env_vars = {"envvars": {"some_key": "some_value"}}
+        # build_args = ast.literal_eval(self.blacklodge_model.runtime_config.inputs.strip("\n").strip(" ")) if self.blacklodge_model.runtime_config.inputs else default_env_vars
+        build_args = {}
+        build_args["PIPELINE_NAME"] = self.blacklodge_model.name
+        build_args["PIPELINE_VERSION"] = str(self.blacklodge_model.version)
+        build_args["APP_TYPE"] = self.blacklodge_model.object_type.value
+        build_args["AWS_ACCOUNT_NUM"] = self.aws_metadata.aws_account_num
+        build_args["PYTHON_VERSION"] = self.blacklodge_model.python_version
+        # if self.linux_template:
+        #    build_args["LINUX_TEMPLATE"] = self.linux_template
+        return build_args
+
+    def get_ecr_image_path(
+        self,
+    ):
+        image_name = self.get_image_name()
+        imange_tag = self.get_image_tags()[0]
+        return f"{self.aws_metadata.ecr_account}.dkr.ecr.us-east-1.amazonaws.com/internal/containerimages/{self.stratos_application_values.platform}/{self.stratos_application_values.namespace}/{image_name}:{imange_tag}"
 
 
 @define
@@ -611,7 +870,9 @@ class Stratos_Api_V1_Util(object):
                     "Could not find any ArgoCD Applications".lower()
                     in response.text.lower()
                 ):
-                    print("app not yet available in argocd. will check again in 60 seconds...")
+                    print(
+                        "app not yet available in argocd. will check again in 60 seconds..."
+                    )
                     time.sleep(60)
                     return self.sync_argocd_application(
                         app_sync_request, stratos_call_success, attempt + 1
@@ -819,6 +1080,106 @@ class Container_Builder(object):
         pass
 
 
+@define
+class Stratos_ContainerBuild_Metadata_V1(object):
+    repository: str = field()
+    git_branch: str = field()
+    git_commit_sha: str = field()
+    image_name: str = field()
+    dockerfile_path: str = field()
+    docker_context: str = field()
+    namespace: str = field()
+    image_tags: List[str] = field(factory=list)
+    injected_aws_role_arn: str = field()
+    injected_aws_account_short_alias: str = field()
+    registries: List[str] = field(factory=list)
+    build_args: Dict[str, str] = field(factory=dict)
+    git_fetch_depth: int = field(default=1)
+
+    @classmethod
+    def get_from_blacklodge_image_for_stratos(
+        cls, blacklodge_model: Blacklodge_Image_For_Stratos
+    ) -> Stratos_ContainerBuild_Metadata_V1:
+        obj = Stratos_ContainerBuild_Metadata_V1(
+            repository=blacklodge_model.get_repository(),
+            git_branch=blacklodge_model.get_git_branch(),
+            git_commit_sha=blacklodge_model.get_git_commit_sha(),
+            image_name=blacklodge_model.get_image_name(),
+            dockerfile_path=blacklodge_model.get_docker_file_path(),
+            docker_context=blacklodge_model.get_docker_context(),
+            namespace=blacklodge_model.get_namespace(),
+            image_tags=blacklodge_model.get_image_tags(),
+            injected_aws_role_arn=blacklodge_model.get_injected_aws_role_arn(),
+            injected_aws_account_short_alias=blacklodge_model.get_injected_aws_account_short_alias(),
+            registries=["ecr"],
+            build_args=blacklodge_model.get_build_args(),
+            git_fetch_depth=1,
+        )
+        return obj
+
+    def build_container_image(self) -> Stratos_Response_Wrapper:
+
+        js_build_body = asdict(self)
+        call_response: Tuple[requests.Response, Optional[requests.Response]] = (
+            self.stratos_api_caller.call_api_and_await_status(
+                http_method=Http_Method.POST,
+                url=self.stratos_endpoint,
+                json_data=js_build_body,
+                status_for_action="containerbuild",
+                keyword_status_is_based_on="commit_sha",
+            )
+        )
+
+        if call_response[0].status_code == 200:
+            if call_response[1]:
+                if call_response[1].status_code == 200:
+                    conclusion = call_response[1].json()["conclusion"]
+                    if conclusion == "success":
+                        return Stratos_Response_Wrapper(
+                            status=Blacklodge_Action_Status.SUCCESS,
+                            message=call_response[1].json(),
+                            error=None,
+                        )
+
+                    else:
+                        return Stratos_Response_Wrapper(
+                            status=Blacklodge_Action_Status.FAILED,
+                            message=None,
+                            # error=f"Container Image Built priocess failed. YOu can find details here: <{call_response[1].json()['html_url']}>",
+                            error=call_response[1].json(),
+                        )
+
+                else:
+                    return Stratos_Response_Wrapper(
+                        status=Blacklodge_Action_Status.FAILED,
+                        message=None,
+                        # error=call_response[1].text,
+                        error={
+                            "status_code": call_response[1].status_code,
+                            "error": "request to build image successfulyl submitted. But process failed with error : "
+                            + call_response[1].text,
+                        },
+                    )
+            else:
+                return Stratos_Response_Wrapper(
+                    status=Blacklodge_Action_Status.UNKNOWN,
+                    message=None,
+                    error={
+                        "error": "Container image built request successfully submitted, but could not get status of the action"
+                    },
+                )
+        else:
+            return Stratos_Response_Wrapper(
+                status=Blacklodge_Action_Status.FAILED,
+                message=None,
+                error={
+                    "status_code": call_response[0].status_code,
+                    "error": "request to build image failed with error: "
+                    + call_response[0].text,
+                },
+            )
+
+
 class Container_Build_Data_For_Stratos_Api_V1(object):
     def __init__(
         self,
@@ -989,259 +1350,6 @@ class Stratos_Api_V1_Container_Builder(Container_Builder):
             )
 
 
-@define
-class Container_Deploy_Data_For_Stratos_Api_V1(object):
-    stratos_application_values: Stratos_Application_Values = field()
-    aws_constants: AWS_Accounts_For_Blacklodge = field()
-    splunk_constants: Splunk_Constants = field()
-    blacklodge_model: Blacklodge_Model = field()
-    blacklodge_user: Blacklodge_User = field()
-    blacklodge_helm_chart_type: Blacklodge_Helm_Chart_Type = field()
-    chart_version: str = field(default="0.3.25")
-    bl_object: str = field(default="deployment")
-
-    def get_stratos_application_name(self) -> str:
-        return self.stratos_application_values.get_application_name(
-            self.blacklodge_model, self.blacklodge_helm_chart_type
-        )
-
-    def get_stratos_namespace_name(
-        self,
-    ):
-        return self.stratos_application_values.get_mnamespace_identifier(
-            self.blacklodge_user
-        )
-
-    def get_stratos_platform(self) -> str:
-        return self.stratos_application_values.get_platform()
-
-    def get_stratos_environment(self) -> str:
-        return self.stratos_application_values.get_environment()
-
-    def get_stratos_project_identifier(self) -> str:
-        return self.stratos_application_values.get_project_identifier(
-            self.blacklodge_user
-        )
-
-    def get_stratos_account_id(self) -> str:
-        return self.stratos_application_values.account_id
-
-    def get_stratos_cluster_type(self) -> str:
-        return self.stratos_application_values.allowed_cluster_types[0]
-
-    def get_stratos_repository(self) -> str:
-        return self.blacklodge_model.git_repo.git_repo_name
-
-    def get_stratos_repository_url(self) -> str:
-        return self.blacklodge_model.git_repo.git_repo_url
-
-    def get_stratos_application_contact(self) -> str:
-        return self.blacklodge_model.user_email[0]
-
-    def get_chart_yaml_contents(self):
-        # if self.bl_object == "deployment":
-        #    chart_yaml = self._generate_chart_yaml()
-        # else:
-        #    chart_yaml = self._generate_alias_chart_yaml()
-        chart_yaml = self._generate_chart_yaml()
-        return base64.urlsafe_b64encode(chart_yaml.encode()).decode()
-
-    def get_value_yaml_contents(self):
-        # if self.bl_object == "deployment":
-        #    values_yaml = self._generate_values_yaml()
-        # else:
-        #    values_yaml = self._generate_alias_values_yaml()
-        values_yaml = self._generate_values_yaml()
-        return base64.urlsafe_b64encode(values_yaml.encode()).decode()
-
-    def _generate_alias_values_yaml(self) -> str:
-        """
-        Generates a helm values.yaml string from the provided inputs
-        """
-
-        values_yaml_dict = {
-            f"blacklodge-user-alias": {
-                "modelName": f"{self.blacklodge_model.name}",
-                "modelVersion": self.blacklodge_model.version,
-                "aliasName": "kollialias",
-                "environment": self.stratos_application_values.environment,
-                "modelPort": 8081,
-            }
-        }
-        return yaml.dump(values_yaml_dict)
-
-    def _generate_alias_chart_yaml(self) -> str:
-        """
-        Generates an appropriate helm Chart.yaml string that uses our pre-built templates
-        """
-
-        dependencies_list = [
-            {
-                "name": f"blacklodge-user-alias",
-                "version": "0.2.4",
-                "repository": "oci://867531445002.dkr.ecr.us-east-1.amazonaws.com/internal/helm/eds/blacklodge",
-            }
-        ]
-
-        chart_dict = {
-            "apiVersion": "v2",
-            "name": f"blacklodge-{self.blacklodge_model.name}-alias",
-            "description": "chart defn 2",
-            "type": "application",
-            "version": "1.0.0",
-            "appVersion": f"{self.blacklodge_model.version}.0.0",
-            "dependencies": dependencies_list,
-        }
-        return yaml.dump(chart_dict)
-
-    def _generate_values_yaml(self) -> str:
-        """
-        Generates a helm values.yaml string from the provided inputs
-        """
-        namespace = self.blacklodge_user.get_teamname()
-
-        ## Generating yaml file for helm values
-        image_dict = {
-            # "path": self.aws_constants.get_ecr_image_path(
-            #    self.stratos_application_values.platform,
-            #    namespace,
-            #    self.blacklodge_model.object_type.value,
-            #    self.blacklodge_model.name,
-            #    self.blacklodge_model.version,
-            # )
-            "path": self.blacklodge_model.get_ecr_image_path(
-                self.aws_constants, self.stratos_application_values.platform, namespace
-            )
-        }
-
-        resources_dict = {
-            "limits": {
-                "cpu": str(self.blacklodge_model.runtime_config.max_cpu),
-                "memory": f"{int(self.blacklodge_model.runtime_config.max_memory_mb)}M",
-            },
-            "requests": {
-                "cpu": str(self.blacklodge_model.runtime_config.min_cpu),
-                "memory": f"{int(self.blacklodge_model.runtime_config.min_memory_mb)}M",
-            },
-        }
-
-        clean_environment = (
-            "prod"
-            if self.stratos_application_values.environment == "prod"
-            else "nonprod"
-        )
-
-        host_list = [
-            {
-                "host": f"mlcore-{clean_environment}.apps.{clean_environment}.stratos.prci.com",
-                "paths": [
-                    {
-                        "path": f"/v1/pipelines/{self.blacklodge_model.name}/versions/{self.blacklodge_model.version}",
-                        "pathType": "Prefix",
-                    }
-                ],
-            },
-            # {
-            #    "host": f"mlcore-{clean_environment}.apps.{clean_environment}.stratos.prci.com",
-            #    "paths": [
-            #        {
-            #            "path": f"/v1/pipelines/{self.blacklodge_model.name}/versions/skollialias",
-            #            "pathType": "Prefix",
-            #        }
-            #    ],
-            # },
-        ]
-
-        ingress_dict = {"hosts": host_list}
-
-        values_yaml_dict = {
-            f"blacklodge-user-{self.blacklodge_model.object_type.value}": {
-                "replicaCount": str(self.blacklodge_model.runtime_config.replicas),
-                "fullnameOverride": f"{self.blacklodge_model.name}-{self.blacklodge_model.version}",
-                "environment": self.stratos_application_values.environment,
-                "splunk_environment": self.splunk_constants.environment,
-                "containerName": f"{self.blacklodge_model.name}-{self.blacklodge_model.version}",
-                "image": image_dict,
-                "resources": resources_dict,
-                "ingress": ingress_dict,
-                "envvars": [],
-            }
-        }
-
-        if self.blacklodge_model.runtime_config.minimum_replicas > 0:
-            autoscaling_dict = {
-                "enabled": True,
-                "minReplicas": self.blacklodge_model.runtime_config.minimum_replicas,
-                "maxReplicas": self.blacklodge_model.runtime_config.maximum_replicas,
-                "targetCPUUtilizationPercentage": str(
-                    self.blacklodge_model.runtime_config.target_cpu_utilization
-                ),
-                "targetMemoryUtilizationPercentage": str(
-                    self.blacklodge_model.runtime_config.target_memory_utilization
-                ),
-            }
-            values_yaml_dict[
-                f"blacklodge-user-{self.blacklodge_model.object_type.value}"
-            ]["autoscaling"] = autoscaling_dict
-
-        if self.blacklodge_model.runtime_config.inputs:
-            values_yaml_dict[
-                f"blacklodge-user-{self.blacklodge_model.object_type.value}"
-            ]["envvars"] = self.blacklodge_model.runtime_config.inputs
-
-        ### OTEL Default variable
-        values_yaml_dict[f"blacklodge-user-{self.blacklodge_model.object_type.value}"][
-            "envvars"
-        ].append(
-            {
-                "name": "OTEL_RESOURCE_ATTRIBUTES",
-                "value": f"service.name=MLCore - {self.blacklodge_model.name}, service.namespace={namespace}, service.version={self.blacklodge_model.version}",
-            }
-        )
-
-        if not self.blacklodge_model.runtime_config.otel_tracing:
-            otel_dict = {"enabled": False}
-            values_yaml_dict[
-                f"blacklodge-user-{self.blacklodge_model.object_type.value}"
-            ]["monitoring"] = {"otel": otel_dict}
-            values_yaml_dict[
-                f"blacklodge-user-{self.blacklodge_model.object_type.value}"
-            ]["envvars"].append({"name": "OTEL_TRACES_SAMPLER", "value": "always_off"})
-
-        else:
-            values_yaml_dict[
-                f"blacklodge-user-{self.blacklodge_model.object_type.value}"
-            ]["envvars"].append({"name": "OTEL_TRACES_SAMPLER", "value": "always_on"})
-
-        return yaml.dump(values_yaml_dict)
-
-    def _generate_chart_yaml(self) -> str:
-        """
-        Generates an appropriate helm Chart.yaml string that uses our pre-built templates
-        """
-
-        ## TODO: Handle dependency versioning? Latest?
-        dependencies_list = [
-            {
-                "name": f"blacklodge-user-{self.blacklodge_model.object_type.value}",
-                "version": self.chart_version,
-                "repository": self.stratos_application_values.helm_repositry,
-            }
-        ]
-
-        chart_dict = {
-            "apiVersion": "v2",
-            "name": f"blacklodge-{self.blacklodge_model.object_type.value}-{self.blacklodge_model.name}",
-            "description": "Auto-generated template for blacklodge deployment",
-            "type": "application",
-            "version": "1.0.0",
-            "appVersion": f"{self.blacklodge_model.version}.0.0",
-            "dependencies": dependencies_list,
-        }
-
-        return yaml.dump(chart_dict)
-
-
 class Container_Deployer(object):
 
     def __init__(self) -> None:
@@ -1250,187 +1358,6 @@ class Container_Deployer(object):
     @abstractmethod
     def deploy_container_image(self) -> Stratos_Response_Wrapper:
         pass
-
-
-@define
-class Helm_Repo_Deployer(object):
-    helm_chart_type: Blacklodge_Helm_Chart_Type = field()
-    stratos_application_values: Stratos_Application_Values = field()
-    aws_constants: AWS_Accounts_For_Blacklodge = field()
-    splunk_constants: Splunk_Constants = field()
-
-    def _get_chart_version(self):
-        if self.helm_chart_type == Blacklodge_Helm_Chart_Type.PIPELINE:
-            return "0.3.25"
-        elif self.helm_chart_type == Blacklodge_Helm_Chart_Type.ALIAS:
-            return "0.2.4"
-        elif self.helm_chart_type == Blacklodge_Helm_Chart_Type.CRONJOB:
-            return "0.2.3"
-        elif self.helm_chart_type == Blacklodge_Helm_Chart_Type.JOB:
-            return "0.2.4"
-        elif self.helm_chart_type == Blacklodge_Helm_Chart_Type.NAMESPACE:
-            return "0.1.1"
-
-    def _get_dependencies_list(self):
-        dependencies_list = [
-            {
-                "name": self.helm_chart_type.value,
-                "version": self._get_chart_version(),
-                "repository": self.stratos_application_values.helm_repositry,
-            }
-        ]
-        return dependencies_list
-
-    def _get_chart_content(self):
-        chart_dict = {
-            "apiVersion": "v2",
-            "name": self.helm_chart_type.value,
-            "description": f"Auto-generated template for {self.helm_chart_type.value}",
-            "type": "application",
-            "version": "1.0.0",
-            "appVersion": "1.0.0",
-            "dependencies": self._get_dependencies_list(),
-        }
-        return chart_dict
-
-    def _get_values_content_for_pipeline(
-        self, blacklodge_model: Blacklodge_Model, blacklodge_user: Blacklodge_User
-    ):
-        """
-        Generates a helm values.yaml string from the provided inputs
-        """
-        namespace = blacklodge_user.get_teamname()
-
-        ## Generating yaml file for helm values
-        image_dict = {
-            # "path": self.aws_constants.get_ecr_image_path(
-            #    self.stratos_application_values.platform,
-            #    namespace,
-            #    blacklodge_model.object_type.value,
-            #    blacklodge_model.name,
-            #    blacklodge_model.version,
-            # )
-            "path": blacklodge_model.get_ecr_image_path(
-                self.aws_constants, self.stratos_application_values.platform, namespace
-            )
-        }
-
-        resources_dict = {
-            "limits": {
-                "cpu": str(blacklodge_model.runtime_config.max_cpu),
-                "memory": f"{int(blacklodge_model.runtime_config.max_memory_mb)}M",
-            },
-            "requests": {
-                "cpu": str(blacklodge_model.runtime_config.min_cpu),
-                "memory": f"{int(blacklodge_model.runtime_config.min_memory_mb)}M",
-            },
-        }
-
-        clean_environment = (
-            "prod"
-            if self.stratos_application_values.environment == "prod"
-            else "nonprod"
-        )
-
-        host_list = [
-            {
-                "host": f"mlcore-{clean_environment}.apps.{clean_environment}.stratos.prci.com",
-                "paths": [
-                    {
-                        "path": f"/v1/pipelines/{blacklodge_model.name}/versions/{blacklodge_model.version}",
-                        "pathType": "Prefix",
-                    }
-                ],
-            },
-            # {
-            #    "host": f"mlcore-{clean_environment}.apps.{clean_environment}.stratos.prci.com",
-            #    "paths": [
-            #        {
-            #            "path": f"/v1/pipelines/{blacklodge_model.name}/versions/skollialias",
-            #            "pathType": "Prefix",
-            #        }
-            #    ],
-            # },
-        ]
-
-        ingress_dict = {"hosts": host_list}
-
-        values_yaml_dict = {
-            self.helm_chart_type.value: {
-                "replicaCount": str(blacklodge_model.runtime_config.replicas),
-                "fullnameOverride": f"{blacklodge_model.name}-{blacklodge_model.version}",
-                "environment": self.stratos_application_values.environment,
-                "splunk_environment": self.splunk_constants.environment,
-                "containerName": f"{blacklodge_model.name}-{blacklodge_model.version}",
-                "image": image_dict,
-                "resources": resources_dict,
-                "ingress": ingress_dict,
-                "envvars": [],
-            }
-        }
-
-        if blacklodge_model.runtime_config.minimum_replicas > 0:
-            autoscaling_dict = {
-                "enabled": True,
-                "minReplicas": blacklodge_model.runtime_config.minimum_replicas,
-                "maxReplicas": blacklodge_model.runtime_config.maximum_replicas,
-                "targetCPUUtilizationPercentage": str(
-                    blacklodge_model.runtime_config.target_cpu_utilization
-                ),
-                "targetMemoryUtilizationPercentage": str(
-                    blacklodge_model.runtime_config.target_memory_utilization
-                ),
-            }
-            values_yaml_dict[f"blacklodge-user-{blacklodge_model.object_type.value}"][
-                "autoscaling"
-            ] = autoscaling_dict
-
-        if blacklodge_model.runtime_config.inputs:
-            values_yaml_dict[self.helm_chart_type.value][
-                "envvars"
-            ] = blacklodge_model.runtime_config.inputs
-
-        ### OTEL Default variable
-        values_yaml_dict[self.helm_chart_type.value]["envvars"].append(
-            {
-                "name": "OTEL_RESOURCE_ATTRIBUTES",
-                "value": f"service.name=MLCore - {blacklodge_model.name}, service.namespace={namespace}, service.version={blacklodge_model.version}",
-            }
-        )
-
-        if not blacklodge_model.runtime_config.otel_tracing:
-            otel_dict = {"enabled": False}
-            values_yaml_dict[self.helm_chart_type.value]["monitoring"] = {
-                "otel": otel_dict
-            }
-            values_yaml_dict[self.helm_chart_type.value]["envvars"].append(
-                {"name": "OTEL_TRACES_SAMPLER", "value": "always_off"}
-            )
-
-        else:
-            values_yaml_dict[self.helm_chart_type.value]["envvars"].append(
-                {"name": "OTEL_TRACES_SAMPLER", "value": "always_on"}
-            )
-
-        return values_yaml_dict
-
-    def _get_values_content_for_alias(self, model_name, pipeline_alias: Pipeline_Alias):
-        """
-        Generates a helm values.yaml string from the provided inputs
-        """
-        values_yaml_dict = {
-            self.helm_chart_type.value: {
-                "modelName": model_name,
-                "modelVersion": pipeline_alias.version,
-                "aliasName": pipeline_alias.alias,
-                "environment": self.stratos_application_values.environment,
-                "modelPort": 8081,
-            }
-        }
-        return values_yaml_dict
-
-    def _get_values_content_for_namespace(self):
-        return None
 
 
 @define

@@ -9,16 +9,9 @@ from mlcore_utils.model.blacklodge import (
     Blacklodge_User,
 )
 from mlcore_utils.model.data import (
-    Blacklodge_Alias_Deployer_Data,
     Blacklodge_Image_For_Stratos,
-    Blacklodge_Namespace_Deployer_Data,
-    Blacklodge_Pipeline_Deployer_Data,
-    Helm_Repo_Deployer,
     HelmChart_Version_Hardcoded_Getter,
     Splunk_Constants,
-    Stratos_Application_Values,
-    Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image,
-    Stratos_ContainerBuild_V1_Data_Builder_Interface,
 )
 from mlcore_utils.model.gh import GitHub_Repo, GitHub_Auth
 from mlcore_utils.model.aws import (
@@ -234,13 +227,8 @@ def get_gh_service_account(
         )
 
 
-def get_blacklodge_model(
-    blacklodge_file: str, helmcharts_repo: GitHub_Repo, github_auth: GitHub_Auth
-):
-    blacklodge_model = Blacklodge_Model.from_toml_file(
-        blacklodge_file, helmcharts_repo, github_auth
-    )
-    return blacklodge_model
+def get_blacklodge_model(blacklodge_file: str, github_auth: GitHub_Auth):
+    blacklodge_model = Blacklodge_Model.from_toml_file(blacklodge_file, github_auth)
 
 
 def get_blacklodge_user(
@@ -250,15 +238,10 @@ def get_blacklodge_user(
     if is_err(user_pool_id_result):
         raise Exception("Could not find User Pool Id in AWS SSM")
     aws_util_for_cognito = AWS_Utils(creds, "cognito-idp", logger)
-    user_result = Blacklodge_User.create_from_cognito_saml_token_v2(
+    user = Blacklodge_User.create_from_cognito_saml_token(
         user_pool_id_result.ok_value, aws_util_for_cognito, access_token
     )
-    if is_ok(user_result):
-        return user_result.ok_value
-    elif is_err(user_result):
-        raise Exception(f"{user_result.err_value}")
-    else:
-        raise Exception(f"Getting UserInfo from Cognito failed with unknown error")
+    return user
 
 
 def get_aws_accounts_for_blacklodge():
@@ -273,9 +256,7 @@ def get_splunk_constants() -> Splunk_Constants:
 
 
 def get_helm_chart_version_getter():
-    g = HelmChart_Version_Hardcoded_Getter()
-    g.get_chart_versions()
-    return g
+    return HelmChart_Version_Hardcoded_Getter()
 
 
 def _init_reqd_objects(token):
@@ -301,16 +282,14 @@ def _init_reqd_objects(token):
         secret_key=STRATOS_SECRET_KEY_PARAM_NAME,
         logger=logger,
     )
+    # stratos_api_caller = Stratos_Api_Caller(secret_getter=stratos_secret_getter)
+    # stratos_application_values: Stratos_Application_Values = (
+    #    Stratos_Application_Values()
+    # )
     github_auth = GitHub_Auth.get_from_username_and_secret_getter(
         gh_service_account, gh_secrets_getter
     )
-    helmcharts_repo = GitHub_Repo.get_from_inputs(
-        git_repo_url="https://github.com/PCDST/blacklodge_helm_charts/tree/main",
-        github_auth=github_auth,
-    )
-    blacklodge_model = get_blacklodge_model(
-        BLACKLODGE_FILE, helmcharts_repo, github_auth
-    )
+    blacklodge_model = get_blacklodge_model(BLACKLODGE_FILE, github_auth)
     blacklodge_user = get_blacklodge_user(
         creds, ssm_util, USER_POOL_ID_PARAM_NAME, token
     )
@@ -319,9 +298,7 @@ def _init_reqd_objects(token):
     )
     aws_accounts_for_blacklodge = get_aws_accounts_for_blacklodge()
     splunk_constants = get_splunk_constants()
-    stratos_application_values: Stratos_Application_Values = (
-        Stratos_Application_Values()
-    )
+    helm_chart_version_getter = get_helm_chart_version_getter()
     blacklodge_image_for_stratos = Blacklodge_Image_For_Stratos(
         blacklodge_model=blacklodge_model,
         blacklodge_user=blacklodge_user,
@@ -329,45 +306,12 @@ def _init_reqd_objects(token):
         stratos_application_values=stratos_application_values,
         splunk_constants=splunk_constants,
     )
-    blacklodge_image_for_stratos.initialize_latent_values()
 
-    # stratos_api_caller = Stratos_Api_Caller(secret_getter=stratos_secret_getter)
-
-    container_build_data = Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(
-        blacklodge_image_for_stratos
-    )
-    #build_data = container_build_data.construct_containerbuild_metadata()
-    #build_data.pretty_print()
-
-
-    helm_chart_version_getter = get_helm_chart_version_getter()
-    pipeline_deploy_data_builder = Blacklodge_Pipeline_Deployer_Data(
-        blacklodge_image_for_stratos=blacklodge_image_for_stratos,
-        helmchart_version_getter=helm_chart_version_getter
-    )
-    pipeline_deploy_request_data = pipeline_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
-    pipeline_deploy_request_data.pretty_print()
-
-    for alias in blacklodge_image_for_stratos.blacklodge_model.aliases:
-        alias_deploy_data_builder = Blacklodge_Alias_Deployer_Data(
-            blacklodge_image_for_stratos=blacklodge_image_for_stratos,
-            pipeline_alias=alias,
-            helmchart_version_getter=helm_chart_version_getter
-        )
-        alias_deploy_request_data = alias_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
-        alias_deploy_request_data.pretty_print()
-
-    namespace_deploy_data_builder = Blacklodge_Namespace_Deployer_Data(
-        blacklodge_image_for_stratos=blacklodge_image_for_stratos,
-        helmchart_version_getter=helm_chart_version_getter
-    )
-    namespace_deploy_request_data = namespace_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
-    namespace_deploy_request_data.pretty_print()
-
+    blacklodge_image_for_stratos.print_me()
 
 
 def _main():
-    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiJjOGNlOGE1My04OGY1LTQ4NDItYjRjNS1lNzU2OTIzNDc4N2MiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxODk4MDg1MSwiZXhwIjoxNzE5MDI0MDUxLCJpYXQiOjE3MTg5ODA4NTEsImp0aSI6ImJlOTc5OTQyLTNjYmQtNDg2My05Y2UyLWQwODM2N2U4Y2IwYyIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.TUT091MRcUuXMT8_mDUzZc6Xp1sWGYuUwza-x7rHLhSJ1rK-nE6PiLs03ZeGN236ABeYpD2GeU7o4RNJv4B3GNQGy9TEklFV5f5qn5ivYuaPTKELiZdMwaNAKvoq9w4w2H36Wd85cD5Y_j-IzF3zHN9bOKuHQRgdh5ZrMV3Tucyw2dI3fj98NSe9EL4NkEAZMvp5oRLHvb3VFBc-34GTEzxzzTup1B0mk44J4hAfYIb3LWUpyOSOA0HnsmxifvIduz8EmNR0-_6jw-Zjw3zT6aLTJp-CPpQgKqIeQRuHRHznC2wP3ugDg1lDZtCxRAiOOTsx1nGbmTb2mj8_DMp7kQ"
+    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiIxYmVhMGVmZi02NTY5LTQ2ZmQtYjNkZC0yODAyZDhiYzY1ZTQiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxODkxMjE0OSwiZXhwIjoxNzE4OTU1MzQ5LCJpYXQiOjE3MTg5MTIxNDksImp0aSI6IjliYTVlYjJiLWViOGMtNDJmNS05ZWUxLWQ4Mjg4OWU1NmZkMiIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.PjxJO2vc4DMiSUkdQih8G3mxxoBrS1r8x7n9DYSEZN5Hz8KLxMAjozZm2XaFSctmopuxjAbRG_7cPxmz5cEvN6T5wlVKaKERt8EALTxmmX6WTVYkbsFt0zYsGz4_5mMbll-mpz4vt2x0zV0zuyH14_78qw5VZcbXttaaigURfVfZDiI4AZwqHABRg6Pj-0N6ahAudj-WzEGsBPrpyUb9AIRgFGobOpUkGnaVoWLMH0BeIDxGesTHnEl-jRZTith-ALjFq6r2KmcVGSEb20Oj_7kF6o0qZWu1u_g9NIR8z9OZFTqCWtKk2GYeKvQfidxKDQjrdKw7dPnBscJeAXvuXg"
     _init_reqd_objects(token)
     # register(token)
     # deploy_v2(token)

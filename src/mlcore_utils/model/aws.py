@@ -376,6 +376,7 @@ class AWS_Accounts_For_Blacklodge(object):
     aws_account_num: str = field()
     aws_role_arn: str = field()
     aws_account_name: str = field()
+    aws_region: str = field(default="us-east-1")
 
     @classmethod
     def create_from_env(cls, env: str) -> AWS_Accounts_For_Blacklodge:
