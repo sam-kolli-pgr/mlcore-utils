@@ -170,13 +170,15 @@ class HelmChart_Version_Hardcoded_Getter(HelmChart_Version_Getter):
     versions: Optional[Dict[Blacklodge_Helm_Chart_Type, str]] = field(default=None)
 
     def assign_versions(self) -> Result[Dict[Blacklodge_Helm_Chart_Type, str], str]:
-        return Ok({
-            Blacklodge_Helm_Chart_Type.PIPELINE: "0.3.25",
-            Blacklodge_Helm_Chart_Type.ALIAS: "0.2.4",
-            Blacklodge_Helm_Chart_Type.CRONJOB: "0.2.3",
-            Blacklodge_Helm_Chart_Type.JOB: "0.2.4",
-            Blacklodge_Helm_Chart_Type.NAMESPACE: "0.1.1",
-        })
+        return Ok(
+            {
+                Blacklodge_Helm_Chart_Type.PIPELINE: "0.3.25",
+                Blacklodge_Helm_Chart_Type.ALIAS: "0.2.4",
+                Blacklodge_Helm_Chart_Type.CRONJOB: "0.2.3",
+                Blacklodge_Helm_Chart_Type.JOB: "0.2.4",
+                Blacklodge_Helm_Chart_Type.NAMESPACE: "0.1.1",
+            }
+        )
 
 
 @define
@@ -517,8 +519,12 @@ class Stratos_ContainerBuild_V1_Data_Builder_Interface(ABC):
     @abstractmethod
     def construct_containerbuild_metadata(self) -> Stratos_ContainerBuild_Metadata_V1:
         pass
+
+
 @define
-class Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(Stratos_ContainerBuild_V1_Data_Builder_Interface):
+class Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(
+    Stratos_ContainerBuild_V1_Data_Builder_Interface
+):
     blacklodge_image_for_stratos: Blacklodge_Image_For_Stratos = field()
 
     def construct_containerbuild_metadata(self) -> Stratos_ContainerBuild_Metadata_V1:
@@ -537,7 +543,6 @@ class Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(Stratos_Conta
             build_args=self.blacklodge_image_for_stratos.get_build_args(),
             git_fetch_depth=self.blacklodge_image_for_stratos.get_git_fetch_depth(),
         )
-
 
 
 @define
@@ -631,8 +636,7 @@ class Blacklodge_Pipeline_Deployer_Data(Stratos_Deployer_V1_Data_Interface):
         return base64.urlsafe_b64encode(chart_yaml.encode()).decode()
 
     def get_value_yaml_contents(self):
-        value_content = self.helm_chart._get_values_content_for_pipeline(
-        )
+        value_content = self.helm_chart._get_values_content_for_pipeline()
         value_yaml = yaml.dump(value_content)
         return base64.urlsafe_b64encode(value_yaml.encode()).decode()
 
@@ -663,9 +667,7 @@ class Blacklodge_Alias_Deployer_Data(Stratos_Deployer_V1_Data_Interface):
         return self.blacklodge_image_for_stratos.blacklodge_user.get_namespace()
 
     def get_stratos_project_identifier(self) -> str:
-        return (
-            self.blacklodge_image_for_stratos.blacklodge_user.get_teamname()
-        )
+        return self.blacklodge_image_for_stratos.blacklodge_user.get_teamname()
 
     def get_chart_yaml_contents(self):
         chart_content = self.helm_chart._get_chart_content()

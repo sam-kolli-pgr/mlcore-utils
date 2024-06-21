@@ -6,8 +6,9 @@ from attr import asdict, define, field
 @define
 class Stratos_V1_Object(object):
     def pretty_print(self):
-        j =  json.dumps(asdict(self), indent=4 )
+        j = json.dumps(asdict(self), indent=4)
         print(j)
+
 
 @define
 class Stratos_AppOwnersMetadata_V1(Stratos_V1_Object):

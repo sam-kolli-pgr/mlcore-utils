@@ -33,6 +33,9 @@ from mlcore_utils.model.aws import (
 from mlcore_utils.model.opa import get_opa_handler_env_based
 from result import is_ok, is_err
 
+from mlcore_utils.model.stratos_action import Stratos_Container_Builder
+from mlcore_utils.model.stratos_api import Requests_Wrapper, Stratos_Api_Caller
+
 """
 from mlcore_utils.model.stratos import (
     ArgoCD_Api_Caller,
@@ -331,40 +334,53 @@ def _init_reqd_objects(token):
     )
     blacklodge_image_for_stratos.initialize_latent_values()
 
-    # stratos_api_caller = Stratos_Api_Caller(secret_getter=stratos_secret_getter)
+    requests_wrapper = Requests_Wrapper()
+    stratos_api_caller = Stratos_Api_Caller(secret_getter=stratos_secret_getter, requests_wrapper=requests_wrapper)
+    #commit_sha = "8e52af9184fda50c8cf8463ff64d6365cd27795b"
+    #url=f"containerbuild/{commit_sha}/run-status"
+    #stratos_api_caller.call_status_url_and_await(url)
 
-    container_build_data = Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(
+    #"""
+    container_build_data_builder = Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(
         blacklodge_image_for_stratos
     )
-    #build_data = container_build_data.construct_containerbuild_metadata()
-    #build_data.pretty_print()
+    build_data = container_build_data_builder.construct_containerbuild_metadata()
+    build_data.pretty_print()
+    container_builder = Stratos_Container_Builder(stratos_api_caller)
+    container_builder.build_container(build_data)
 
+    """
 
     helm_chart_version_getter = get_helm_chart_version_getter()
     pipeline_deploy_data_builder = Blacklodge_Pipeline_Deployer_Data(
         blacklodge_image_for_stratos=blacklodge_image_for_stratos,
-        helmchart_version_getter=helm_chart_version_getter
+        helmchart_version_getter=helm_chart_version_getter,
     )
-    pipeline_deploy_request_data = pipeline_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
-    pipeline_deploy_request_data.pretty_print()
+    pipeline_deploy_request_data = (
+        pipeline_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
+    )
+    #pipeline_deploy_request_data.pretty_print()
 
     for alias in blacklodge_image_for_stratos.blacklodge_model.aliases:
         alias_deploy_data_builder = Blacklodge_Alias_Deployer_Data(
             blacklodge_image_for_stratos=blacklodge_image_for_stratos,
             pipeline_alias=alias,
-            helmchart_version_getter=helm_chart_version_getter
+            helmchart_version_getter=helm_chart_version_getter,
         )
-        alias_deploy_request_data = alias_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
-        alias_deploy_request_data.pretty_print()
+        alias_deploy_request_data = (
+            alias_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
+        )
+        #alias_deploy_request_data.pretty_print()
 
     namespace_deploy_data_builder = Blacklodge_Namespace_Deployer_Data(
         blacklodge_image_for_stratos=blacklodge_image_for_stratos,
-        helmchart_version_getter=helm_chart_version_getter
+        helmchart_version_getter=helm_chart_version_getter,
     )
-    namespace_deploy_request_data = namespace_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
-    namespace_deploy_request_data.pretty_print()
-
-
+    namespace_deploy_request_data = (
+        namespace_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
+    )
+    #namespace_deploy_request_data.pretty_print()
+    """
 
 def _main():
     token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiJjOGNlOGE1My04OGY1LTQ4NDItYjRjNS1lNzU2OTIzNDc4N2MiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxODk4MDg1MSwiZXhwIjoxNzE5MDI0MDUxLCJpYXQiOjE3MTg5ODA4NTEsImp0aSI6ImJlOTc5OTQyLTNjYmQtNDg2My05Y2UyLWQwODM2N2U4Y2IwYyIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.TUT091MRcUuXMT8_mDUzZc6Xp1sWGYuUwza-x7rHLhSJ1rK-nE6PiLs03ZeGN236ABeYpD2GeU7o4RNJv4B3GNQGy9TEklFV5f5qn5ivYuaPTKELiZdMwaNAKvoq9w4w2H36Wd85cD5Y_j-IzF3zHN9bOKuHQRgdh5ZrMV3Tucyw2dI3fj98NSe9EL4NkEAZMvp5oRLHvb3VFBc-34GTEzxzzTup1B0mk44J4hAfYIb3LWUpyOSOA0HnsmxifvIduz8EmNR0-_6jw-Zjw3zT6aLTJp-CPpQgKqIeQRuHRHznC2wP3ugDg1lDZtCxRAiOOTsx1nGbmTb2mj8_DMp7kQ"
