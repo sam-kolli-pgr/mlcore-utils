@@ -12,11 +12,11 @@ class Stratos_Container_Builder(object):
         json_data = asdict(containerbuild_data)
         response = self.stratos_api_caller.call_api(
             http_method=Http_Method.POST,
-            endpoint = "containerbuild",
+            endpoint="containerbuild",
             json_data=json_data,
         )
         if response.status_code == 200:
             commit_sha = response.json()["commit_sha"]
-            #status_response_url = f"{self.stratos_api_caller.stratos_url}/containerbuild/{commit_sha}/run-status"
+            # status_response_url = f"{self.stratos_api_caller.stratos_url}/containerbuild/{commit_sha}/run-status"
             status_response_url = f"containerbuild/{commit_sha}/run-status"
             self.stratos_api_caller.call_status_url_and_await(status_response_url)

@@ -335,12 +335,16 @@ def _init_reqd_objects(token):
     blacklodge_image_for_stratos.initialize_latent_values()
 
     requests_wrapper = Requests_Wrapper()
-    stratos_api_caller = Stratos_Api_Caller(secret_getter=stratos_secret_getter, requests_wrapper=requests_wrapper)
-    #commit_sha = "8e52af9184fda50c8cf8463ff64d6365cd27795b"
-    #url=f"containerbuild/{commit_sha}/run-status"
-    #stratos_api_caller.call_status_url_and_await(url)
+    stratos_api_caller = Stratos_Api_Caller(
+        secret_getter=stratos_secret_getter, requests_wrapper=requests_wrapper
+    )
+    # commit_sha = "8e52af9184fda50c8cf8463ff64d6365cd27795b"
 
-    #"""
+    register_blacklodge_pipeline(
+        creds, blacklodge_image_for_stratos, stratos_api_caller
+    )
+
+    """
     container_build_data_builder = Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(
         blacklodge_image_for_stratos
     )
@@ -349,7 +353,6 @@ def _init_reqd_objects(token):
     container_builder = Stratos_Container_Builder(stratos_api_caller)
     container_builder.build_container(build_data)
 
-    """
 
     helm_chart_version_getter = get_helm_chart_version_getter()
     pipeline_deploy_data_builder = Blacklodge_Pipeline_Deployer_Data(
@@ -381,6 +384,41 @@ def _init_reqd_objects(token):
     )
     #namespace_deploy_request_data.pretty_print()
     """
+
+
+def register_blacklodge_pipeline(
+    creds: AWS_Credentials,
+    blacklodge_image_for_stratos: Blacklodge_Image_For_Stratos,
+    stratos_api_caller: Stratos_Api_Caller,
+):
+    s3_util = AWS_S3_Util(aws_credentials=creds, logger=logger)
+
+    blacklodge_image_for_stratos.blacklodge_model.git_repo.clone_repo_and_checkout()
+    blacklodge_image_for_stratos.blacklodge_model.git_repo.get_dvc_files()
+    tarfile_result = (
+        blacklodge_image_for_stratos.blacklodge_model.git_repo.produce_tar_ball()
+    )
+    if is_ok(tarfile_result):
+        file_path = tarfile_result.ok_value.name
+        file_name = str(file_path).split(os.sep)[-1]
+        bucket = f"{blacklodge_image_for_stratos.aws_accounts_for_blacklodge.aws_account_num}-registry"
+        s3_key = f"pipeline_registry/{blacklodge_image_for_stratos.blacklodge_model.name}/{blacklodge_image_for_stratos.blacklodge_model.version}/{file_name}"
+        s3_util.upload_file(bucket=bucket, key=s3_key, filename=str(file_path))
+
+        container_build_data_builder = (
+            Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(
+                blacklodge_image_for_stratos
+            )
+        )
+        build_data = container_build_data_builder.construct_containerbuild_metadata()
+        build_data.pretty_print()
+        container_builder = Stratos_Container_Builder(stratos_api_caller)
+        container_builder.build_container(build_data)
+    elif is_err(tarfile_result):
+        print("Could not get tarfile " + tarfile_result.err_value)
+    else:
+        print("Unknonw")
+
 
 def _main():
     token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiJjOGNlOGE1My04OGY1LTQ4NDItYjRjNS1lNzU2OTIzNDc4N2MiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxODk4MDg1MSwiZXhwIjoxNzE5MDI0MDUxLCJpYXQiOjE3MTg5ODA4NTEsImp0aSI6ImJlOTc5OTQyLTNjYmQtNDg2My05Y2UyLWQwODM2N2U4Y2IwYyIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.TUT091MRcUuXMT8_mDUzZc6Xp1sWGYuUwza-x7rHLhSJ1rK-nE6PiLs03ZeGN236ABeYpD2GeU7o4RNJv4B3GNQGy9TEklFV5f5qn5ivYuaPTKELiZdMwaNAKvoq9w4w2H36Wd85cD5Y_j-IzF3zHN9bOKuHQRgdh5ZrMV3Tucyw2dI3fj98NSe9EL4NkEAZMvp5oRLHvb3VFBc-34GTEzxzzTup1B0mk44J4hAfYIb3LWUpyOSOA0HnsmxifvIduz8EmNR0-_6jw-Zjw3zT6aLTJp-CPpQgKqIeQRuHRHznC2wP3ugDg1lDZtCxRAiOOTsx1nGbmTb2mj8_DMp7kQ"

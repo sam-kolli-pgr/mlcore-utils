@@ -43,7 +43,7 @@ class Requests_Wrapper(object):
                 f"Could not reach endpoint {endpoint} after {retries} attempts"
             )
         try:
-            #self.logger.info("calling " + endpoint)
+            # self.logger.info("calling " + endpoint)
             return requests.request(
                 method=http_method.value,
                 url=endpoint,
@@ -56,26 +56,41 @@ class Requests_Wrapper(object):
             )
         except requests.exceptions.ReadTimeout:
             # self.logger.error(f"retry attempt {attempt_count} for endpoint {endpoint}")
-            return self.call_end_point(http_method, endpoint, params, data, headers, json, timeout, attempt_count + 1, **kwargs)
+            return self.call_end_point(
+                http_method,
+                endpoint,
+                params,
+                data,
+                headers,
+                json,
+                timeout,
+                attempt_count + 1,
+                **kwargs,
+            )
         except Exception as e:
             # self.logger.error("error calling endpoint {endpoint}")
             raise e
 
-    def call_url_till_condition_is_met(self, status_response_url: str, action_to_perform, condition_to_meet : Callable[[requests.Response], bool]) -> Result[requests.Response, str]:
+    def call_url_till_condition_is_met(
+        self,
+        status_response_url: str,
+        action_to_perform,
+        condition_to_meet: Callable[[requests.Response], bool],
+    ) -> Result[requests.Response, str]:
         finished = False
         seconds_to_wait = 60
         num_attempt = 0
         while not (finished or num_attempt > 30):
             try:
-                #status_response = self.call_api(
+                # status_response = self.call_api(
                 #    http_method=Http_Method.GET,
                 #    endpoint=f"{status_response_url}",
-                #)
+                # )
                 status_response = action_to_perform()
                 if status_response.status_code == 200:
                     condition_is_met = condition_to_meet(status_response)
                     if condition_is_met:
-                        finished=True
+                        finished = True
                         return Ok(status_response)
                     else:
                         time.sleep(seconds_to_wait)
@@ -85,7 +100,7 @@ class Requests_Wrapper(object):
                     num_attempt = num_attempt + 1
             except Exception as e:
                 raise e
-                #return Err(f"Cound not get status from {status_response_url}. Error {str(e)}")
+                # return Err(f"Cound not get status from {status_response_url}. Error {str(e)}")
 
 
 class ArgoCD_Api_Caller(object):
@@ -123,7 +138,7 @@ class ArgoCD_Api_Caller(object):
         current_attempt_count: int = 1,
         max_number_of_attempts: int = 3,
         params=None,
-        **kwargs
+        **kwargs,
     ) -> requests.Response:
         try:
             url = f"{self.argocd_url}/{endpoint}"
@@ -137,17 +152,28 @@ class ArgoCD_Api_Caller(object):
                 timeout=timeout,
                 attempt_count=current_attempt_count,
                 retries=max_number_of_attempts,
-                **kwargs
+                **kwargs,
             )
             return response
         except Exception as e:
             raise e
 
-    def call_status_url_and_await(self, status_response_url) -> Result[requests.Response, str]:
-        condition_to_meet = lambda status_response : status_response.json()["status"]["health"]["status"]
+    def call_status_url_and_await(
+        self, status_response_url
+    ) -> Result[requests.Response, str]:
+        condition_to_meet = lambda status_response: status_response.json()["status"][
+            "health"
+        ]["status"]
+
         def _a():
-            return self.call_api(http_method=Http_Method.GET, endpoint=status_response_url)
-        return self.requests_wrapper.call_url_till_condition_is_met(status_response_url, _a, condition_to_meet)
+            return self.call_api(
+                http_method=Http_Method.GET, endpoint=status_response_url
+            )
+
+        return self.requests_wrapper.call_url_till_condition_is_met(
+            status_response_url, _a, condition_to_meet
+        )
+
 
 class Stratos_Api_Caller(object):
     def __init__(
@@ -156,9 +182,7 @@ class Stratos_Api_Caller(object):
         requests_wrapper: Requests_Wrapper,
     ) -> None:
         self.secret_getter = secret_getter
-        self.stratos_url = (
-            f"https://jetstreamapi.apps.stratos.prci.com/api/v1/stratos"
-        )
+        self.stratos_url = f"https://jetstreamapi.apps.stratos.prci.com/api/v1/stratos"
         self.requests_wrapper = requests_wrapper
 
     def get_default_stratos_headers(self):
@@ -186,7 +210,7 @@ class Stratos_Api_Caller(object):
         current_attempt_count: int = 1,
         max_number_of_attempts: int = 3,
         params=None,
-        **kwargs
+        **kwargs,
     ) -> requests.Response:
         try:
             url = f"{self.stratos_url}/{endpoint}"
@@ -200,27 +224,36 @@ class Stratos_Api_Caller(object):
                 timeout=timeout,
                 attempt_count=current_attempt_count,
                 retries=max_number_of_attempts,
-                **kwargs
+                **kwargs,
             )
             return response
         except Exception as e:
             raise e
 
-    def call_status_url_and_await(self, status_response_url) -> Result[requests.Response, str]:
-        condition_to_meet = lambda status_response : status_response.json()["build_status"] == "completed"
+    def call_status_url_and_await(
+        self, status_response_url
+    ) -> Result[requests.Response, str]:
+        condition_to_meet = (
+            lambda status_response: status_response.json()["build_status"]
+            == "completed"
+        )
+
         def _a():
             r = self.call_api(http_method=Http_Method.GET, endpoint=status_response_url)
             print(r.status_code)
             print(r.text)
             return r
-        response =self.requests_wrapper.call_url_till_condition_is_met(status_response_url, _a, condition_to_meet) 
+
+        response = self.requests_wrapper.call_url_till_condition_is_met(
+            status_response_url, _a, condition_to_meet
+        )
         if is_ok(response):
             print(response.ok_value.status_code)
         elif is_err(response):
             print(response.err_value)
         else:
             print("....")
-        return  response
+        return response
 
     def call_api_old(
         self,
@@ -332,4 +365,3 @@ class Stratos_Api_Caller(object):
             return (response, self.call_status_url_and_await(status_response_url))
         else:
             return (response, None)
-
