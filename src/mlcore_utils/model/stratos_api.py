@@ -365,3 +365,280 @@ class Stratos_Api_Caller(object):
             return (response, self.call_status_url_and_await(status_response_url))
         else:
             return (response, None)
+
+
+
+@define
+class Stratos_Api_V1_Util(object):
+    stratos_api_caller: Stratos_Api_Caller = field()
+
+    def deploy_helm_chart_and_values(
+        self, helm_deploy_request: Stratos_ContainerHelDeployRequest_V1
+    ) -> Result[bool, str]:
+        endpoint = "containerdeploy/helm/chart_and_values_yaml"
+        data = asdict(helm_deploy_request)
+        try:
+            response = self.stratos_api_caller.call_api(
+                http_method=Http_Method.POST,
+                endpoint=endpoint,
+                json_data=data,
+            )
+            if response.status_code == 200:
+                return Ok(True)
+            else:
+                print(
+                    f"Error while deploying helm data. Status_Code {response.status_code}. Text: {response.text}"
+                )
+                return Err(
+                    f"Error while deploying helm data. Status_Code {response.status_code}. Text: {response.text}"
+                )
+        except Exception as e:
+            return Err(f"Error while trying to deploy helm data: " + str(e))
+
+    def deploy_helm_chart(
+        self, helm_deploy_request: Stratos_ContainerHelDeployRequest_V1
+    ) -> Result[bool, str]:
+        endpoint = "containerdeploy/helm/chart_yaml"
+        data = {
+            "platform": helm_deploy_request.platform,
+            "application_name": helm_deploy_request.application_name,
+            "environment_name": helm_deploy_request.environment_name,
+            "project_identifier": helm_deploy_request.project_identifier,
+            "is_dynamic_environment": False,
+            "dynamic_environment_name": "",
+            "base64_yaml_contents": helm_deploy_request.base64_chart_yaml_contents,
+            "namespace_identifier": helm_deploy_request.namespace_identifier,
+            "cluster_type": helm_deploy_request.cluster_type,
+        }
+        try:
+            response = self.stratos_api_caller.call_api(
+                http_method=Http_Method.POST,
+                endpoint=endpoint,
+                json_data=data,
+            )
+            if response.status_code == 200:
+                return Ok(True)
+            else:
+                print(
+                    f"Error while deploying helm data. Status_Code {response.status_code}. Text: {response.text}"
+                )
+                return Err(
+                    f"Error while deploying helm data. Status_Code {response.status_code}. Text: {response.text}"
+                )
+        except Exception as e:
+            return Err(f"Error while trying to deploy helm data: " + str(e))
+
+    def sync_argocd_application(
+        self,
+        app_sync_request: Stratos_AppSyncArgoRequest_V1,
+        stratos_call_success: bool = True,
+        attempt=1,
+    ):
+        endpoint = "argocd/app-sync"
+        data = asdict(app_sync_request)
+        try:
+            response = self.stratos_api_caller.call_api(
+                http_method=Http_Method.POST,
+                endpoint=endpoint,
+                json_data=data,
+            )
+            if response.status_code == 200:
+                print("isssued successful sync call")
+                return Ok(True)
+            elif response.status_code == 500 and stratos_call_success and attempt <= 12:
+                if (
+                    "Could not find any ArgoCD Applications".lower()
+                    in response.text.lower()
+                ):
+                    print(
+                        "app not yet available in argocd. will check again in 60 seconds..."
+                    )
+                    time.sleep(60)
+                    return self.sync_argocd_application(
+                        app_sync_request, stratos_call_success, attempt + 1
+                    )
+                else:
+                    print(
+                        f"Error while syncing argocd capp. Status_Code {response.status_code}. Text: {response.text}"
+                    )
+                    return Err(
+                        f"Error while syncing argocd capp. Status_Code {response.status_code}. Text: {response.text}"
+                    )
+
+            else:
+                print(
+                    f"Error while deploying helm data. Status_Code {response.status_code}. Text: {response.text}"
+                )
+                return Err(
+                    f"Error while deploying helm data. Status_Code {response.status_code}. Text: {response.text}"
+                )
+        except Exception as e:
+            return Err(f"Error while trying to deploy helm data: " + str(e))
+
+    def check_if_argocd_project_exists_using_stratos_sdk(
+        self, project_metadata: Stratos_ProjectMetadata_V1
+    ) -> Result[bool, str]:
+        endpoint = f"argocd/projects"
+        try:
+            response = self.stratos_api_caller.call_api(
+                http_method=Http_Method.GET,
+                endpoint=endpoint,
+            )
+            if response.status_code == 200:
+                available_projects = response.json()
+                return Ok(project_metadata.rendered_project_name in available_projects)
+            else:
+                print(
+                    f"Error while trying to query ArgoCD project. Status_Code: {response.status_code}. Text: {response.text}"
+                )
+                return Err(
+                    f"Error while trying to query ArgoCD project. Status_Code: {response.status_code}. Text: {response.text}"
+                )
+        except Exception as e:
+            return Err("Error while trying to query Stratos application " + str(e))
+
+    def check_if_stratos_application_exists(
+        self, appowners_metadata: Stratos_AppOwnersMetadata_V1
+    ) -> Result[bool, str]:
+        endpoint = f"containerdeploy/application-owner"
+        json_data = {
+            "platform": appowners_metadata.platform,
+            "application_name": f"{appowners_metadata.application_name}",
+        }
+        try:
+            response = self.stratos_api_caller.call_api(
+                http_method=Http_Method.GET,
+                endpoint=endpoint,
+                params=json_data,
+            )
+            if response.status_code == 200:
+                return Ok(True)
+            if response.status_code == 500:
+                return Ok(False)
+            else:
+                return Err(
+                    f"Error while trying to query Stratos Application. Status_Code: {response.status_code}. Text: {response.text}"
+                )
+        except Exception as e:
+            return Err("Error while trying to query Stratos application " + str(e))
+
+    def _create_argocd_project_using_stratos_sdk(
+        self, project_metadata: Stratos_ProjectMetadata_V1
+    ) -> Result[bool, str]:
+        endpoint = "argocd/projects"
+        data = asdict(project_metadata)
+        try:
+            response = self.stratos_api_caller.call_api(
+                http_method=Http_Method.POST,
+                endpoint=endpoint,
+                json_data=data,
+            )
+            if response.status_code == 200:
+                return Ok(True)
+            else:
+                print(
+                    f"Error while creating ArgoCD Project {project_metadata.project_identifier}. Status_Code {response.status_code}. Text: {response.text}"
+                )
+                return Err(
+                    f"Error while creating ArgoCD Project {project_metadata.project_identifier}. Status_Code {response.status_code}. Text: {response.text}"
+                )
+        except Exception as e:
+            return Err(
+                f"Error while trying to create ArgoCD Project {project_metadata.project_identifier}: "
+                + str(e)
+            )
+
+    def _create_k8s_namespace_using_stratos_sdk(
+        self, namespace_metadata: Stratos_NamespaceMetadata_V1
+    ) -> Result[bool, str]:
+        endpoint = "argocd/namespace"
+        data = asdict(namespace_metadata)
+        try:
+            response = self.stratos_api_caller.call_api(
+                http_method=Http_Method.POST,
+                endpoint=endpoint,
+                json_data=data,
+            )
+            if response.status_code == 200:
+                return Ok(True)
+            else:
+                print(
+                    f"Error while creating K8s Namespace. Status_Code {response.status_code}. Text: {response.text}"
+                )
+                return Err(
+                    f"Error while creating K8s Namespace. Status_Code {response.status_code}. Text: {response.text}"
+                )
+        except Exception as e:
+            return Err(
+                f"Error while trying to create K8s Namespace. {namespace_metadata.namespace_identifier}: "
+                + str(e)
+            )
+
+    def _create_stratos_application(
+        self, appowners_metadata: Stratos_AppOwnersMetadata_V1
+    ) -> Result[bool, str]:
+        endpoint = "argocd/app-owners"
+        data = {
+            "allowed_cluster_types": appowners_metadata.allowed_cluster_types,
+            "repository": appowners_metadata.repository,
+            "repository_url": appowners_metadata.repository_url,
+            "application_contact": appowners_metadata.application_contact,
+            "platform": appowners_metadata.platform,
+            "application_name": appowners_metadata.application_name,
+        }
+
+        try:
+            response = self.stratos_api_caller.call_api(
+                http_method=Http_Method.POST,
+                endpoint=endpoint,
+                json_data=asdict(appowners_metadata),
+            )
+            if response.status_code == 200:
+                return Ok(True)
+            else:
+                print(
+                    f"Error while creating Stratos Application. Status_Code {response.status_code}. Text: {response.text}"
+                )
+                return Err(
+                    f"Error while creating Stratos Application. Status_Code {response.status_code}. Text: {response.text}"
+                )
+        except Exception as e:
+            return Err(
+                f"Error while trying to create Stratos application {appowners_metadata.application_name}: "
+                + str(e)
+            )
+
+    def create_k8s_namespace_using_stratos_sdk(
+        self, namespace_metadata: Stratos_NamespaceMetadata_V1
+    ) -> Result[bool, str]:
+        namepsace_exists_result = Ok(False)
+        if is_ok(namepsace_exists_result):
+            namespace_exists = namepsace_exists_result.ok_value
+            if namespace_exists:
+                return Ok(True)
+            else:
+                return self._create_k8s_namespace_using_stratos_sdk(namespace_metadata)
+
+    def create_argocd_project_using_stratos_sdk(
+        self, project_metadata: Stratos_ProjectMetadata_V1
+    ) -> Result[bool, str]:
+        project_exists_result = self.check_if_argocd_project_exists_using_stratos_sdk(
+            project_metadata
+        )
+        if is_ok(project_exists_result):
+            project_exists = project_exists_result.ok_value
+            if project_exists:
+                return Ok(True)
+            else:
+                return self._create_argocd_project_using_stratos_sdk(project_metadata)
+
+    def create_stratos_application(
+        self, appowners_metadata: Stratos_AppOwnersMetadata_V1
+    ) -> Result[bool, str]:
+        app_exists_result = self.check_if_stratos_application_exists(appowners_metadata)
+        if is_ok(app_exists_result):
+            app_exists = app_exists_result.ok_value
+            if app_exists:
+                return Ok(True)
+            else:
+                return self._create_stratos_application(appowners_metadata)

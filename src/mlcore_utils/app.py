@@ -34,6 +34,7 @@ from mlcore_utils.model.opa import get_opa_handler_env_based
 from result import is_ok, is_err
 
 from mlcore_utils.model.stratos_action import Stratos_Container_Builder
+from mlcore_utils.model.stratos_utils import Stratos_Api_V1_Util
 from mlcore_utils.model.stratos_api import Requests_Wrapper, Stratos_Api_Caller
 
 """
@@ -385,6 +386,40 @@ def _init_reqd_objects(token):
     #namespace_deploy_request_data.pretty_print()
     """
 
+def deploy_blacklodge_pipeline(
+    blacklodge_image_for_stratos: Blacklodge_Image_For_Stratos,
+    stratos_api_caller: Stratos_Api_Caller,
+):
+    helm_chart_version_getter = get_helm_chart_version_getter()
+    pipeline_deploy_data_builder = Blacklodge_Pipeline_Deployer_Data(
+        blacklodge_image_for_stratos=blacklodge_image_for_stratos,
+        helmchart_version_getter=helm_chart_version_getter,
+    )
+    pipeline_deploy_request_data = (
+        pipeline_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
+    )
+    #pipeline_deploy_request_data.pretty_print()
+
+    for alias in blacklodge_image_for_stratos.blacklodge_model.aliases:
+        alias_deploy_data_builder = Blacklodge_Alias_Deployer_Data(
+            blacklodge_image_for_stratos=blacklodge_image_for_stratos,
+            pipeline_alias=alias,
+            helmchart_version_getter=helm_chart_version_getter,
+        )
+        alias_deploy_request_data = (
+            alias_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
+        )
+        #alias_deploy_request_data.pretty_print()
+
+    namespace_deploy_data_builder = Blacklodge_Namespace_Deployer_Data(
+        blacklodge_image_for_stratos=blacklodge_image_for_stratos,
+        helmchart_version_getter=helm_chart_version_getter,
+    )
+    namespace_deploy_request_data = (
+        namespace_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
+    )
+    #namespace_deploy_request_data.pretty_print()
+
 
 def register_blacklodge_pipeline(
     creds: AWS_Credentials,
@@ -412,7 +447,7 @@ def register_blacklodge_pipeline(
         )
         build_data = container_build_data_builder.construct_containerbuild_metadata()
         build_data.pretty_print()
-        container_builder = Stratos_Container_Builder(stratos_api_caller)
+        container_builder = Stratos_Api_V1_Util(stratos_api_caller)
         container_builder.build_container(build_data)
     elif is_err(tarfile_result):
         print("Could not get tarfile " + tarfile_result.err_value)

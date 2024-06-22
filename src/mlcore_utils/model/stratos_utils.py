@@ -1,13 +1,13 @@
+from mlcore_utils.model.stratos_api import Stratos_Api_Caller, Stratos_Api_V1_Util
 from result import Err, Ok, Result, is_ok, is_err
 from attr import asdict, define, field
 from mlcore_utils.model.common import Http_Method
-from mlcore_utils.model.data import Stratos_Deployer_V1_Data_Interface
+from mlcore_utils.model.data import Blacklodge_Alias_Deployer_Data, Blacklodge_Namespace_Deployer_Data, Blacklodge_Pipeline_Deployer_Data, Stratos_Deployer_V1_Data_Interface
 from mlcore_utils.model.stratos_api import Stratos_Api_Caller
-from mlcore_utils.model.stratos_interface import Stratos_AppOwnersMetadata_V1, Stratos_ContainerBuild_Metadata_V1, Stratos_ContainerHelDeployRequest_V1, Stratos_NamespaceMetadata_V1, Stratos_ProjectMetadata_V1
-
+from mlcore_utils.model.stratos_interface import Stratos_AppOwnersMetadata_V1, Stratos_AppSyncArgoRequest_V1, Stratos_ContainerBuild_Metadata_V1, Stratos_ContainerHelDeployRequest_V1, Stratos_NamespaceMetadata_V1, Stratos_ProjectMetadata_V1
 
 @define
-class Stratos_Api_V1_Blacklodge_Container_Builder(object):
+class Stratos_Util(object):
     stratos_api_caller: Stratos_Api_Caller = field()
 
     def build_container(self, containerbuild_data: Stratos_ContainerBuild_Metadata_V1):
@@ -22,11 +22,7 @@ class Stratos_Api_V1_Blacklodge_Container_Builder(object):
             # status_response_url = f"{self.stratos_api_caller.stratos_url}/containerbuild/{commit_sha}/run-status"
             status_response_url = f"containerbuild/{commit_sha}/run-status"
             self.stratos_api_caller.call_status_url_and_await(status_response_url)
-
-@define
-class Stratos_Api_V1_Blacklodge_Application_Deployer:
-    stratos_api_caller: Stratos_Api_Caller = field()
-
+    
     def create_k8s_namespace(
         self, deployer_data: Stratos_Deployer_V1_Data_Interface, util: Stratos_Api_V1_Util
     ):
@@ -121,7 +117,7 @@ class Stratos_Api_V1_Blacklodge_Application_Deployer:
             )
 
     def deploy_pipeline(self):
-        # self.deploy_namespace()
+        self.deploy_namespace()
         util = Stratos_Api_V1_Util(self.stratos_api_caller)
 
         deployer_data = Blacklodge_Pipeline_Deployer_Data(
@@ -137,7 +133,7 @@ class Stratos_Api_V1_Blacklodge_Application_Deployer:
         self.deploy_application(deployer_data, util)
 
     def deploy_alias(self):
-        # self.deploy_namespace()
+        self.deploy_namespace()
         util = Stratos_Api_V1_Util(self.stratos_api_caller)
 
         for alias in self.blacklodge_model.aliases:
