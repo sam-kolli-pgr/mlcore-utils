@@ -33,8 +33,7 @@ from mlcore_utils.model.aws import (
 from mlcore_utils.model.opa import get_opa_handler_env_based
 from result import is_ok, is_err
 
-from mlcore_utils.model.stratos_action import Stratos_Container_Builder
-from mlcore_utils.model.stratos_utils import Stratos_Api_V1_Util
+from mlcore_utils.model.stratos_utils import Stratos_Util
 from mlcore_utils.model.stratos_api import Requests_Wrapper, Stratos_Api_Caller
 
 """
@@ -341,8 +340,11 @@ def _init_reqd_objects(token):
     )
     # commit_sha = "8e52af9184fda50c8cf8463ff64d6365cd27795b"
 
-    register_blacklodge_pipeline(
-        creds, blacklodge_image_for_stratos, stratos_api_caller
+    #register_blacklodge_pipeline(
+    #    creds, blacklodge_image_for_stratos, stratos_api_caller
+    #)
+    deploy_blacklodge_pipeline(
+        blacklodge_image_for_stratos, stratos_api_caller
     )
 
     """
@@ -390,7 +392,10 @@ def deploy_blacklodge_pipeline(
     blacklodge_image_for_stratos: Blacklodge_Image_For_Stratos,
     stratos_api_caller: Stratos_Api_Caller,
 ):
+    stratos_util = Stratos_Util(stratos_api_caller)
+
     helm_chart_version_getter = get_helm_chart_version_getter()
+
     pipeline_deploy_data_builder = Blacklodge_Pipeline_Deployer_Data(
         blacklodge_image_for_stratos=blacklodge_image_for_stratos,
         helmchart_version_getter=helm_chart_version_getter,
@@ -398,6 +403,7 @@ def deploy_blacklodge_pipeline(
     pipeline_deploy_request_data = (
         pipeline_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
     )
+    stratos_util.deploy_pipeline(pipeline_deploy_data_builder)
     #pipeline_deploy_request_data.pretty_print()
 
     for alias in blacklodge_image_for_stratos.blacklodge_model.aliases:
@@ -410,6 +416,7 @@ def deploy_blacklodge_pipeline(
             alias_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
         )
         #alias_deploy_request_data.pretty_print()
+        stratos_util.deploy_alias(alias_deploy_data_builder)
 
     namespace_deploy_data_builder = Blacklodge_Namespace_Deployer_Data(
         blacklodge_image_for_stratos=blacklodge_image_for_stratos,
@@ -419,6 +426,7 @@ def deploy_blacklodge_pipeline(
         namespace_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
     )
     #namespace_deploy_request_data.pretty_print()
+    stratos_util.deploy_namespace(namespace_deploy_data_builder)
 
 
 def register_blacklodge_pipeline(
@@ -447,8 +455,8 @@ def register_blacklodge_pipeline(
         )
         build_data = container_build_data_builder.construct_containerbuild_metadata()
         build_data.pretty_print()
-        container_builder = Stratos_Api_V1_Util(stratos_api_caller)
-        container_builder.build_container(build_data)
+        stratos_util = Stratos_Util(stratos_api_caller)
+        stratos_util.build_container(build_data)
     elif is_err(tarfile_result):
         print("Could not get tarfile " + tarfile_result.err_value)
     else:
@@ -456,7 +464,7 @@ def register_blacklodge_pipeline(
 
 
 def _main():
-    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiJjOGNlOGE1My04OGY1LTQ4NDItYjRjNS1lNzU2OTIzNDc4N2MiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxODk4MDg1MSwiZXhwIjoxNzE5MDI0MDUxLCJpYXQiOjE3MTg5ODA4NTEsImp0aSI6ImJlOTc5OTQyLTNjYmQtNDg2My05Y2UyLWQwODM2N2U4Y2IwYyIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.TUT091MRcUuXMT8_mDUzZc6Xp1sWGYuUwza-x7rHLhSJ1rK-nE6PiLs03ZeGN236ABeYpD2GeU7o4RNJv4B3GNQGy9TEklFV5f5qn5ivYuaPTKELiZdMwaNAKvoq9w4w2H36Wd85cD5Y_j-IzF3zHN9bOKuHQRgdh5ZrMV3Tucyw2dI3fj98NSe9EL4NkEAZMvp5oRLHvb3VFBc-34GTEzxzzTup1B0mk44J4hAfYIb3LWUpyOSOA0HnsmxifvIduz8EmNR0-_6jw-Zjw3zT6aLTJp-CPpQgKqIeQRuHRHznC2wP3ugDg1lDZtCxRAiOOTsx1nGbmTb2mj8_DMp7kQ"
+    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiI4OWU1MjZhOS04NDYxLTRhODktYWUwNS0xZTFkODczNjdiNzUiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxOTIzMzU1MywiZXhwIjoxNzE5Mjc2NzUzLCJpYXQiOjE3MTkyMzM1NTMsImp0aSI6ImNiMDg4Njg4LTdiMDgtNGUxNi1iNzFhLTY2MmRkMGFkYWFjZSIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.W1KZwkzsUXEQHdU96ienWHAcP769VKyi6tR5fReWvNNN6R7CredwObLrzlF-hqFQV7V5T-JdYZYzCD3sJUpN4gk4uNX4TDN89O1uOhGSPwLgVjOVZYD9hfjXlLTMA_2_Qo8Sx9gFYaHIuGe5nLy4sUOeOmMruASdfplebXxnvoB9Nq_ol1oKIaQduxYpvm3c8mQxl5Of58ycqK-1pasz2o8TvJ2B5x3iLRNgb5uX4Blz9Be1ild6hGMfhMXu0sBecLsVIt7MB365bDw7HCimIZhoY7Bva8S4PogNKvtAJ0A1oZT_MwOM09lB39y3RnUh--dLkSXBAbfPw6_bX0JImQ"
     _init_reqd_objects(token)
     # register(token)
     # deploy_v2(token)

@@ -18,6 +18,7 @@ from mlcore_utils.model.blacklodge import (
 )
 
 from mlcore_utils.model.common import Secret_Getter
+from mlcore_utils.model.stratos_interface import Stratos_AppOwnersMetadata_V1, Stratos_AppSyncArgoRequest_V1, Stratos_ContainerHelDeployRequest_V1, Stratos_NamespaceMetadata_V1, Stratos_ProjectMetadata_V1
 
 
 @define
@@ -458,6 +459,8 @@ class Stratos_Api_V1_Util(object):
                         app_sync_request, stratos_call_success, attempt + 1
                     )
                 else:
+                    print(response.status_code)
+                    print(response.text)
                     print(
                         f"Error while syncing argocd capp. Status_Code {response.status_code}. Text: {response.text}"
                     )

@@ -1,6 +1,8 @@
 import json
-from typing import Dict, List
+from typing import Any, Dict, List
 from attr import asdict, define, field
+
+#from mlcore_utils.model.data import Stratos_Environment
 
 
 @define
@@ -26,11 +28,11 @@ class Stratos_ProjectMetadata_V1(Stratos_V1_Object):
     application_name: str = field()
     project_identifier: str = field()
     platform: str = field(default="eds")
-    rendered_project_name: str = field(init=False)
+    rendered_project_name: Any = field(init=False)
 
     def __attrs_post_init__(self):
         self.rendered_project_name = (
-            f"{self.platform}-{self.project_identifier}-{self.environment_name}"
+            f"{self.platform}-{self.project_identifier}-{self.environment_name.value}"
         )
 
 
