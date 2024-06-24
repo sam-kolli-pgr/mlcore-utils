@@ -3,7 +3,13 @@ from attr import asdict, define, field
 from mlcore_utils.model.common import Http_Method
 from mlcore_utils.model.data import Stratos_Deployer_V1_Data_Interface
 from mlcore_utils.model.stratos_api import Stratos_Api_Caller
-from mlcore_utils.model.stratos_interface import Stratos_AppOwnersMetadata_V1, Stratos_ContainerBuild_Metadata_V1, Stratos_ContainerHelDeployRequest_V1, Stratos_NamespaceMetadata_V1, Stratos_ProjectMetadata_V1
+from mlcore_utils.model.stratos_interface import (
+    Stratos_AppOwnersMetadata_V1,
+    Stratos_ContainerBuild_Metadata_V1,
+    Stratos_ContainerHelDeployRequest_V1,
+    Stratos_NamespaceMetadata_V1,
+    Stratos_ProjectMetadata_V1,
+)
 
 
 @define
@@ -23,12 +29,15 @@ class Stratos_Api_V1_Blacklodge_Container_Builder(object):
             status_response_url = f"containerbuild/{commit_sha}/run-status"
             self.stratos_api_caller.call_status_url_and_await(status_response_url)
 
+
 @define
 class Stratos_Api_V1_Blacklodge_Application_Deployer:
     stratos_api_caller: Stratos_Api_Caller = field()
 
     def create_k8s_namespace(
-        self, deployer_data: Stratos_Deployer_V1_Data_Interface, util: Stratos_Api_V1_Util
+        self,
+        deployer_data: Stratos_Deployer_V1_Data_Interface,
+        util: Stratos_Api_V1_Util,
     ):
         print("handling k8s namespce....")
         namespace_metadata = Stratos_NamespaceMetadata_V1(
@@ -40,7 +49,9 @@ class Stratos_Api_V1_Blacklodge_Application_Deployer:
         util.create_k8s_namespace_using_stratos_sdk(namespace_metadata)
 
     def create_project(
-        self, deployer_data: Stratos_Deployer_V1_Data_Interface, util: Stratos_Api_V1_Util
+        self,
+        deployer_data: Stratos_Deployer_V1_Data_Interface,
+        util: Stratos_Api_V1_Util,
     ):
         print("handling argocd project....")
         project_metadata = Stratos_ProjectMetadata_V1(
@@ -54,7 +65,9 @@ class Stratos_Api_V1_Blacklodge_Application_Deployer:
         return argocd_proeject_result
 
     def deploy_application(
-        self, deployer_data: Stratos_Deployer_V1_Data_Interface, util: Stratos_Api_V1_Util
+        self,
+        deployer_data: Stratos_Deployer_V1_Data_Interface,
+        util: Stratos_Api_V1_Util,
     ):
         self.create_k8s_namespace(deployer_data, util)
         argocd_proeject_result = self.create_project(deployer_data, util)

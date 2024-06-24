@@ -340,12 +340,10 @@ def _init_reqd_objects(token):
     )
     # commit_sha = "8e52af9184fda50c8cf8463ff64d6365cd27795b"
 
-    #register_blacklodge_pipeline(
+    # register_blacklodge_pipeline(
     #    creds, blacklodge_image_for_stratos, stratos_api_caller
-    #)
-    deploy_blacklodge_pipeline(
-        blacklodge_image_for_stratos, stratos_api_caller
-    )
+    # )
+    deploy_blacklodge_pipeline(blacklodge_image_for_stratos, stratos_api_caller)
 
     """
     container_build_data_builder = Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(
@@ -388,6 +386,7 @@ def _init_reqd_objects(token):
     #namespace_deploy_request_data.pretty_print()
     """
 
+
 def deploy_blacklodge_pipeline(
     blacklodge_image_for_stratos: Blacklodge_Image_For_Stratos,
     stratos_api_caller: Stratos_Api_Caller,
@@ -404,7 +403,7 @@ def deploy_blacklodge_pipeline(
         pipeline_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
     )
     stratos_util.deploy_pipeline(pipeline_deploy_data_builder)
-    #pipeline_deploy_request_data.pretty_print()
+    # pipeline_deploy_request_data.pretty_print()
 
     for alias in blacklodge_image_for_stratos.blacklodge_model.aliases:
         alias_deploy_data_builder = Blacklodge_Alias_Deployer_Data(
@@ -415,7 +414,7 @@ def deploy_blacklodge_pipeline(
         alias_deploy_request_data = (
             alias_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
         )
-        #alias_deploy_request_data.pretty_print()
+        # alias_deploy_request_data.pretty_print()
         stratos_util.deploy_alias(alias_deploy_data_builder)
 
     namespace_deploy_data_builder = Blacklodge_Namespace_Deployer_Data(
@@ -425,7 +424,7 @@ def deploy_blacklodge_pipeline(
     namespace_deploy_request_data = (
         namespace_deploy_data_builder.get_stratos_containerhelm_deployrequest_v1()
     )
-    #namespace_deploy_request_data.pretty_print()
+    # namespace_deploy_request_data.pretty_print()
     stratos_util.deploy_namespace(namespace_deploy_data_builder)
 
 

@@ -18,7 +18,13 @@ from mlcore_utils.model.blacklodge import (
 )
 
 from mlcore_utils.model.common import Secret_Getter
-from mlcore_utils.model.stratos_interface import Stratos_AppOwnersMetadata_V1, Stratos_AppSyncArgoRequest_V1, Stratos_ContainerHelDeployRequest_V1, Stratos_NamespaceMetadata_V1, Stratos_ProjectMetadata_V1
+from mlcore_utils.model.stratos_interface import (
+    Stratos_AppOwnersMetadata_V1,
+    Stratos_AppSyncArgoRequest_V1,
+    Stratos_ContainerHelDeployRequest_V1,
+    Stratos_NamespaceMetadata_V1,
+    Stratos_ProjectMetadata_V1,
+)
 
 
 @define
@@ -366,7 +372,6 @@ class Stratos_Api_Caller(object):
             return (response, self.call_status_url_and_await(status_response_url))
         else:
             return (response, None)
-
 
 
 @define

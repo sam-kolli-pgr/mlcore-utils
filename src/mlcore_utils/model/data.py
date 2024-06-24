@@ -205,7 +205,6 @@ class Blacklodge_Image_For_Stratos(object):
     # helm_repo_deployer: Helm_Repo_Deployer = field()
     image_tag: Optional[str] = field(default=None)
 
-
     def initialize_latent_values(self):
         self._assign_git_image_tag()
 
@@ -215,7 +214,6 @@ class Blacklodge_Image_For_Stratos(object):
     def get_domain_to_host_on(self):
         clean_environment = self.stratos_application_values.get_environment().value
         return f"mlcore-{clean_environment}.apps.{clean_environment}.stratos.prci.com"
-        
 
     def _get_value_from_result(self, input_result: Result[str, str], msg_tag: str):
         if input_result.is_ok:
@@ -552,11 +550,16 @@ class Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(
 @define
 class Stratos_Deployer_V1_Data_Interface(ABC):
     blacklodge_image_for_stratos: Blacklodge_Image_For_Stratos = field()
-    def get_stratos_appownersmetadata_v1(self, application_name) -> Stratos_AppOwnersMetadata_V1:
+
+    def get_stratos_appownersmetadata_v1(
+        self, application_name
+    ) -> Stratos_AppOwnersMetadata_V1:
         stratos_application_metadata = Stratos_AppOwnersMetadata_V1(
             repository=self.blacklodge_image_for_stratos.blacklodge_model.git_repo.git_repo_name,
             repository_url=self.blacklodge_image_for_stratos.blacklodge_model.git_repo.git_repo_url,
-            application_contact=self.blacklodge_image_for_stratos.blacklodge_model.user_email[0],
+            application_contact=self.blacklodge_image_for_stratos.blacklodge_model.user_email[
+                0
+            ],
             application_name=application_name,
         )
         return stratos_application_metadata
@@ -570,7 +573,9 @@ class Stratos_Deployer_V1_Data_Interface(ABC):
         )
         return namespace_metadata
 
-    def get_stratos_containerheldeployrequest_v1(self) -> Stratos_ContainerHelDeployRequest_V1:
+    def get_stratos_containerheldeployrequest_v1(
+        self,
+    ) -> Stratos_ContainerHelDeployRequest_V1:
         helm_data = Stratos_ContainerHelDeployRequest_V1(
             base64_chart_yaml_contents=self.get_chart_yaml_contents(),
             base64_values_yaml_contents=self.get_value_yaml_contents(),
@@ -580,7 +585,7 @@ class Stratos_Deployer_V1_Data_Interface(ABC):
             project_identifier=self.get_stratos_project_identifier(),
         )
         return helm_data
-    
+
     def get_stratos_appsyncargorequest_v1(self) -> Stratos_AppSyncArgoRequest_V1:
         app_sync_request = Stratos_AppSyncArgoRequest_V1(
             environment_name=self.get_stratos_environment(),
@@ -658,7 +663,6 @@ class Blacklodge_Pipeline_Deployer_Data(Stratos_Deployer_V1_Data_Interface):
         default=HelmChart_Version_Hardcoded_Getter()
     )
     helm_chart: Helm_Repo_Deployer = field(init=False)
-
 
     def __attrs_post_init__(self):
         helm_chart_type = Blacklodge_Helm_Chart_Type.PIPELINE

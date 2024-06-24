@@ -47,9 +47,9 @@ def test_clone_from_gh(a123662_testpipeline_git_repo: GitHub_Repo):
         print(sha.err_value)
     else:
         print("unknown")
-    #git_repo.clone_repo_and_checkout()
-    #git_repo.get_dvc_files()
-    #git_repo.produce_tar_ball()
+    # git_repo.clone_repo_and_checkout()
+    # git_repo.get_dvc_files()
+    # git_repo.produce_tar_ball()
     # interactor = GitHub_Interactor()
     # interactor.clone_repo(git_repo, "/tmp/mlcore")
     ##interactor.get_tarball("/tmp/mlcore", git_repo)
