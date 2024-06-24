@@ -376,6 +376,7 @@ class AWS_Accounts_For_Blacklodge(object):
     aws_account_num: str = field()
     aws_role_arn: str = field()
     aws_account_name: str = field()
+    aws_region: str = field(default="us-east-1")
 
     @classmethod
     def create_from_env(cls, env: str) -> AWS_Accounts_For_Blacklodge:
@@ -412,9 +413,8 @@ class AWS_Accounts_For_Blacklodge(object):
     def get_ecr_image_path(
         self, platform, namespace, object_type, object_name, object_version
     ):
-        #return f"{self.ecr_account}.dkr.ecr.us-east-1.amazonaws.com/internal/containerimages/eds/{namespace}/{environment}/{container_path}/{container_version}"
-        #return f"{self.ecr_account}.dkr.ecr.us-east-1.amazonaws.com/blacklodge_{object_type}/{object_name}:{object_version}"
+        # return f"{self.ecr_account}.dkr.ecr.us-east-1.amazonaws.com/internal/containerimages/eds/{namespace}/{environment}/{container_path}/{container_version}"
+        # return f"{self.ecr_account}.dkr.ecr.us-east-1.amazonaws.com/blacklodge_{object_type}/{object_name}:{object_version}"
         return f"{self.ecr_account}.dkr.ecr.us-east-1.amazonaws.com/internal/containerimages/{platform}/{namespace}/blacklodge-{object_type}-{object_name}:{object_version}"
 
-        #retrun f"867531445002.dkr.ecr.us-east-1.amazonaws.com/internal/containerimages/eds/cla-cc/blacklodge-pipeline-bl-test-ap:17
-
+        # retrun f"867531445002.dkr.ecr.us-east-1.amazonaws.com/internal/containerimages/eds/cla-cc/blacklodge-pipeline-bl-test-ap:17

@@ -1,6 +1,7 @@
 from __future__ import annotations
 import requests
 import boto3
+from result import Err, Ok, Result
 import toml
 from dockerfile_parse import DockerfileParser
 from typing import Optional, Any, List
@@ -46,6 +47,7 @@ class Blacklodge_Container(object):
         self.github_repo = GitHub_Repo.get_from_inputs(
             git_repo_url=self.git_repo_address, github_auth=self.github_auth
         )
+
     def initialize_github_repo(self, github_auth: GitHub_Auth):
         self.github_repo = GitHub_Repo.get_from_inputs(
             git_repo_url=self.git_repo_address, github_auth=self.github_auth
@@ -83,7 +85,7 @@ class Blacklodge_Container(object):
     ) -> Optional[Blacklodge_Container]:
         if prebuilt_container == Prebuilt_Container.BASE:
             return Blacklodge_Container(
-                git_repo_address="https://github.com/PCDST/blacklodge_containers/tree/skolli",
+                git_repo_address="https://github.com/PCDST/blacklodge_containers/tree/simple",
                 github_auth=github_auth,
                 dockerfile_path="dockerfiles/base_container/Dockerfile",
                 prebuilt_container=prebuilt_container,
@@ -105,7 +107,7 @@ class Pipeline_Runtime_Config:
     max_memory_mb: Optional[int] = field(default=1500)
     replicas: Optional[int] = field(default=None)
     inputs: Optional[Any] = field(default=None)
-    otel_tracing : bool = field(default=False)
+    otel_tracing: bool = field(default=False)
 
     def __attrs_post_init__(self):
         if self.replicas and self.minimum_replicas:
@@ -123,13 +125,13 @@ class Pipeline_Runtime_Config:
                 and self.min_memory_mb
                 and self.max_memory_mb
             ):
-                #if self.cpu < 0.5 or self.cpu > 8.0:
+                # if self.cpu < 0.5 or self.cpu > 8.0:
                 #    raise ValueError("cpu value should be between 0.5 and 8.0")
                 if self.target_cpu_utilization < 40 or self.target_cpu_utilization > 90:
                     raise ValueError(
                         "target_cpu_utilization value should be between 40 and 90"
                     )
-                #if self.memory < 1 or self.memory > 60:
+                # if self.memory < 1 or self.memory > 60:
                 #    raise ValueError("memory value should be between 1 and 60")
                 if not (self.minimum_replicas > 0):
                     raise ValueError("min_replicas should be more than 0")
@@ -163,7 +165,7 @@ class Pipeline_Runtime_Config:
         replicas,
         inputs,
     ):
-        p= Pipeline_Runtime_Config(
+        p = Pipeline_Runtime_Config(
             blacklodge_container=blacklodge_container,
             minimum_replicas=minimum_replicas,
             maximum_replicas=maximum_replicas,
@@ -215,6 +217,7 @@ class Blacklodge_Model:
     object_type: Blacklodge_Model_Type = field(default=Blacklodge_Model_Type.PIPELINE)
     git_repo_path: Optional[str] = field(default=None)
     git_repo: Optional[GitHub_Repo] = field(default=None)
+    blacklodge_helm_charts_git_repo: Optional[GitHub_Repo] = field(default=None)
     aliases: List[Pipeline_Alias] = field(factory=list)
     user_email: List[str] = field(
         default=["sam_s_kolli@progressive.com"]
@@ -222,6 +225,20 @@ class Blacklodge_Model:
 
     def __attrs_post_init__(self):
         pass
+
+    def get_container_image_name(self):
+        return f"blacklodge-{self.object_type.value}-{self.name}"
+
+    def get_container_tag(self):
+        return f"{self.version}"
+
+    def get_ecr_image_path(
+        self,
+        aws_accounts_for_blacklodge: AWS_Accounts_For_Blacklodge,
+        platform: str,
+        namespace: str,
+    ):
+        return f"{aws_accounts_for_blacklodge.ecr_account}.dkr.ecr.us-east-1.amazonaws.com/internal/containerimages/{platform}/{namespace}/blacklodge-{self.object_type.value}-{self.name}:{self.version}"
 
     def initialize_github_repo(self, github_auth: GitHub_Auth):
         self.git_repo = GitHub_Repo.get_from_inputs(
@@ -231,15 +248,15 @@ class Blacklodge_Model:
             github_auth=github_auth,
         )
 
-
     @name.validator
     def validate_name(self, attribute, value):
         if "_" in value:
             raise ValueError("Model/Pipline/Job name cannot contain underscores.")
 
     @staticmethod
-    def from_dict(data):
+    def from_dict(data, helmcharts_repo: GitHub_Repo, github_auth: GitHub_Auth):
         name = data["model"]["name"]
+        version = data["model"]["version"]
 
         git_repo_url = data["model"]["git_repo_url"]
         git_repo_branch = (
@@ -250,12 +267,12 @@ class Blacklodge_Model:
         git_repo_path = (
             data["model"]["git_repo_path"] if "git_repo_path" in data["model"] else None
         )
-        #repo = GitHub_Repo.get_from_inputs(
-        #    git_repo_url=git_repo_url,
-        #    git_repo_branch=git_repo_branch,
-        #    git_repo_path=git_repo_path,
-        #    github_auth=github_auth,
-        #)
+        repo = GitHub_Repo.get_from_inputs(
+            git_repo_url=git_repo_url,
+            git_repo_branch=git_repo_branch,
+            git_repo_path=git_repo_path,
+            github_auth=github_auth,
+        )
         aliases = [
             Pipeline_Alias(entry["version_number"], entry["alias_name"])
             for entry in data["alias"]
@@ -340,24 +357,27 @@ class Blacklodge_Model:
 
         model = Blacklodge_Model(
             name=name,
-            version=1,
+            version=version,
             python_version="3.9",
             git_repo_url=git_repo_url,
             git_repo_branch=git_repo_branch,
             git_repo_path=git_repo_path,
-            #git_repo=repo,
+            git_repo=repo,
             aliases=aliases,
             runtime_config=runtime_config,
             service_account=service_account,
             environment=environment,
+            blacklodge_helm_charts_git_repo=helmcharts_repo,
         )
         return model
 
     @staticmethod
-    def from_toml_file(file_path: str, github_auth: GitHub_Auth):
+    def from_toml_file(
+        file_path: str, helmcharts_repo: GitHub_Repo, github_auth: GitHub_Auth
+    ):
         with open(file_path) as f:
             data = toml.load(f)
-        model = Blacklodge_Model.from_dict(data, github_auth)
+        model = Blacklodge_Model.from_dict(data, helmcharts_repo, github_auth)
         return model
 
 
@@ -385,22 +405,72 @@ class Blacklodge_User(object):
         cls, user_pool_id: str, aws_util_for_cognito: AWS_Utils, saml_token: str
     ) -> Blacklodge_User:
         cognito_client = aws_util_for_cognito.get_client()
-        user_pool_details = cognito_client.describe_user_pool(UserPoolId=user_pool_id)[
-            "UserPool"
-        ]
-        region = aws_util_for_cognito.aws_credentials.region
-        user_info_endpoint = f"https://{user_pool_details['Domain']}.auth.{region}.amazoncognito.com/oauth2/userInfo"
-        user_info_auth_header = {"Authorization": f"Bearer {saml_token}"}
+        try:
+            user_pool_details = cognito_client.describe_user_pool(
+                UserPoolId=user_pool_id
+            )["UserPool"]
+            region = aws_util_for_cognito.aws_credentials.region
+            user_info_endpoint = f"https://{user_pool_details['Domain']}.auth.{region}.amazoncognito.com/oauth2/userInfo"
+            user_info_auth_header = {"Authorization": f"Bearer {saml_token}"}
 
-        r = requests.post(user_info_endpoint, headers=user_info_auth_header, timeout=2)
-        data = r.json()
-        return Blacklodge_User(
-            lan_id=data["custom:lan_id"],
-            name=data["name"],
-            email=data["email"],
-            business_unit=Blacklodge_BusinessUnit(custom_groups=data["custom:groups"]),
-            username=data["username"],
-        )
+            r = requests.post(
+                user_info_endpoint, headers=user_info_auth_header, timeout=2
+            )
+            data = r.json()
+            return Blacklodge_User(
+                lan_id=data["custom:lan_id"],
+                name=data["name"],
+                email=data["email"],
+                business_unit=Blacklodge_BusinessUnit(
+                    custom_groups=data["custom:groups"]
+                ),
+                username=data["username"],
+            )
+        except Exception as e:
+            raise e
+
+    @classmethod
+    def create_from_cognito_saml_token_v2(
+        cls, user_pool_id: str, aws_util_for_cognito: AWS_Utils, saml_token: str
+    ) -> Result[Blacklodge_User, str]:
+        cognito_client = aws_util_for_cognito.get_client()
+        try:
+            user_pool_details = cognito_client.describe_user_pool(
+                UserPoolId=user_pool_id
+            )["UserPool"]
+        except Exception as e:
+            return Err(f"Error describing Cognito User Pool {user_pool_id}: {str(e)}")
+
+        try:
+            region = aws_util_for_cognito.aws_credentials.region
+            user_info_endpoint = f"https://{user_pool_details['Domain']}.auth.{region}.amazoncognito.com/oauth2/userInfo"
+            user_info_auth_header = {"Authorization": f"Bearer {saml_token}"}
+
+            r = requests.post(
+                user_info_endpoint, headers=user_info_auth_header, timeout=2
+            )
+            data = r.json()
+        except Exception as e:
+            return Err(
+                f"Error getting userinfo from cognito {user_info_endpoint}: {str(e)}"
+            )
+
+        if "name" in data:
+            return Ok(
+                Blacklodge_User(
+                    lan_id=data["custom:lan_id"],
+                    name=data["name"],
+                    email=data["email"],
+                    business_unit=Blacklodge_BusinessUnit(
+                        custom_groups=data["custom:groups"]
+                    ),
+                    username=data["username"],
+                )
+            )
+        else:
+            return Err(
+                f"Got response from Cognito UserEndpoint but there is an error: {data}"
+            )
 
     def get_namespace(self) -> str:
         return self.business_unit.get_namespace()
