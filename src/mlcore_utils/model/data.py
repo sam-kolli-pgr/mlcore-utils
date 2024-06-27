@@ -177,7 +177,7 @@ class HelmChart_Version_Hardcoded_Getter(HelmChart_Version_Getter):
         return Ok(
             {
                 Blacklodge_Helm_Chart_Type.PIPELINE: "0.3.25",
-                Blacklodge_Helm_Chart_Type.ALIAS: "0.2.4",
+                Blacklodge_Helm_Chart_Type.ALIAS: "0.2.8",
                 Blacklodge_Helm_Chart_Type.CRONJOB: "0.2.3",
                 Blacklodge_Helm_Chart_Type.JOB: "0.2.4",
                 Blacklodge_Helm_Chart_Type.NAMESPACE: "0.1.1",
@@ -214,6 +214,7 @@ class Blacklodge_Image_For_Stratos(object):
     def get_domain_to_host_on(self):
         clean_environment = self.stratos_application_values.get_environment().value
         return f"mlcore-{clean_environment}.apps.{clean_environment}.stratos.prci.com"
+        #return f"blacklodge.apps.{clean_environment}.stratos.prci.com"
 
     def _get_value_from_result(self, input_result: Result[str, str], msg_tag: str):
         if input_result.is_ok:
@@ -500,6 +501,7 @@ class Helm_Repo_Deployer(object):
         """
         Generates a helm values.yaml string from the provided inputs
         """
+        ingress_dict = {"enabled": True}
         values_yaml_dict = {
             self.helm_chart_type.value: {
                 "modelName": model_name,
@@ -507,6 +509,7 @@ class Helm_Repo_Deployer(object):
                 "aliasName": pipeline_alias.alias,
                 "environment": self.blacklodge_image_for_stratos.stratos_application_values.get_environment().value,
                 "modelPort": 8081,
+                "ingress" : ingress_dict
             }
         }
         return values_yaml_dict

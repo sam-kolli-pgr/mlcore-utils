@@ -44,11 +44,11 @@ def test_run_1(bl_model):
     response = bl_model.call_endpoint("post", endpoint="run", json_data=data)
     print(response.status_code)
     print(response.text)
-    assert response.status_code == 200
+    assert response.status_code == 201
 
 
 def test_status_1(bl_model):
     response = bl_model.call_endpoint("get", endpoint="status")
     print(response.status_code)
     print(response.text)
-    assert response.status_code == 200
+    assert response.status_code == 201

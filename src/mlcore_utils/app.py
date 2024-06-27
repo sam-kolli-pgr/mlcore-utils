@@ -1,6 +1,5 @@
 import logging
 import os
-import pytest
 
 from mlcore_utils.model.common import Http_Method, MLCore_Secret
 from mlcore_utils.model.blacklodge import (
@@ -340,10 +339,12 @@ def _init_reqd_objects(token):
     )
     # commit_sha = "8e52af9184fda50c8cf8463ff64d6365cd27795b"
 
-    # register_blacklodge_pipeline(
-    #    creds, blacklodge_image_for_stratos, stratos_api_caller
-    # )
-    deploy_blacklodge_pipeline(blacklodge_image_for_stratos, stratos_api_caller)
+    blacklodge_image_for_stratos.print_me()
+
+    #register_blacklodge_pipeline(
+    #   creds, blacklodge_image_for_stratos, stratos_api_caller
+    #)
+    #deploy_blacklodge_pipeline(blacklodge_image_for_stratos, stratos_api_caller)
 
     """
     container_build_data_builder = Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(
