@@ -339,19 +339,31 @@ def _init_reqd_objects(token):
     )
     # commit_sha = "8e52af9184fda50c8cf8463ff64d6365cd27795b"
 
-    blacklodge_image_for_stratos.print_me()
+    #blacklodge_image_for_stratos.print_me()
+    blacklodge_model.runtime_config.blacklodge_container.get_build_args_used_by_dockerfile()
 
     #register_blacklodge_pipeline(
     #   creds, blacklodge_image_for_stratos, stratos_api_caller
     #)
     #deploy_blacklodge_pipeline(blacklodge_image_for_stratos, stratos_api_caller)
 
-    """
     container_build_data_builder = Stratos_ContainerBuild_V1_Data_Builder_From_Blacklodge_Image(
         blacklodge_image_for_stratos
     )
     build_data = container_build_data_builder.construct_containerbuild_metadata()
-    build_data.pretty_print()
+    #build_data.pretty_print()
+    validation_result = build_data.validate_build_args_are_present(blacklodge_image_for_stratos.blacklodge_model.runtime_config.blacklodge_container.get_build_args_used_by_dockerfile())
+    if is_ok(validation_result):
+        if validation_result.ok_value:
+            print("Build Args Validation Passed")
+        else:
+            print("Build Args Validation Failed with unknown error")
+
+    elif is_err(validation_result):
+        raise Exception(validation_result.err_value)
+    else:
+        raise Exception("Build Args Validation failed with unknown error")
+    """
     container_builder = Stratos_Container_Builder(stratos_api_caller)
     container_builder.build_container(build_data)
 
@@ -455,6 +467,7 @@ def register_blacklodge_pipeline(
         )
         build_data = container_build_data_builder.construct_containerbuild_metadata()
         build_data.pretty_print()
+        build_data.validate_build_args_are_present(blacklodge_image_for_stratos.blacklodge_model.runtime_config.blacklodge_container.get_build_args_used_by_dockerfile())
         stratos_util = Stratos_Util(stratos_api_caller)
         stratos_util.build_container(build_data)
     elif is_err(tarfile_result):
@@ -464,7 +477,7 @@ def register_blacklodge_pipeline(
 
 
 def _main():
-    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiI4OWU1MjZhOS04NDYxLTRhODktYWUwNS0xZTFkODczNjdiNzUiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcxOTIzMzU1MywiZXhwIjoxNzE5Mjc2NzUzLCJpYXQiOjE3MTkyMzM1NTMsImp0aSI6ImNiMDg4Njg4LTdiMDgtNGUxNi1iNzFhLTY2MmRkMGFkYWFjZSIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.W1KZwkzsUXEQHdU96ienWHAcP769VKyi6tR5fReWvNNN6R7CredwObLrzlF-hqFQV7V5T-JdYZYzCD3sJUpN4gk4uNX4TDN89O1uOhGSPwLgVjOVZYD9hfjXlLTMA_2_Qo8Sx9gFYaHIuGe5nLy4sUOeOmMruASdfplebXxnvoB9Nq_ol1oKIaQduxYpvm3c8mQxl5Of58ycqK-1pasz2o8TvJ2B5x3iLRNgb5uX4Blz9Be1ild6hGMfhMXu0sBecLsVIt7MB365bDw7HCimIZhoY7Bva8S4PogNKvtAJ0A1oZT_MwOM09lB39y3RnUh--dLkSXBAbfPw6_bX0JImQ"
+    token = "eyJraWQiOiJqU2pWZlNENjdheGQ3NHZMVmhLVmxmd05HazN1eTdERTJ5SSs5ZzBJbDlvPSIsImFsZyI6IlJTMjU2In0.eyJzdWIiOiJiMTE4NzQ1ZC1lYmQ3LTQ2NjItYTQ5Ny0zMTgzOTVjYWM3OTEiLCJjb2duaXRvOmdyb3VwcyI6WyJ1cy1lYXN0LTFfYUM0NUpiYmlvX21sY29yZS1jbGllbnQtYXp1cmVhZCJdLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9hQzQ1SmJiaW8iLCJ2ZXJzaW9uIjoyLCJjbGllbnRfaWQiOiIydDVrYnVpam9kMmE4M2w0MDhiMmFrNmlrayIsIm9yaWdpbl9qdGkiOiJjMDhiYTcwYy05OTJkLTQ4NjItODhhZC0yMjA2ZGQyNzZiZGMiLCJ0b2tlbl91c2UiOiJhY2Nlc3MiLCJzY29wZSI6Im9wZW5pZCIsImF1dGhfdGltZSI6MTcyMDQ2NjE1NCwiZXhwIjoxNzIwNTA5MzU0LCJpYXQiOjE3MjA0NjYxNTQsImp0aSI6ImUwNDRkM2I0LTE2YzctNDI2MC05Y2Y1LTVjZGEyZTBkYzhhOSIsInVzZXJuYW1lIjoibWxjb3JlLWNsaWVudC1henVyZWFkX1NBTV9TX0tPTExJQFByb2dyZXNzaXZlLmNvbSJ9.lVYuAByY5nGrKvtq-wklMidmCpz2YULnMT6DelyE8-yu6QeyIO1pKW-1sOoloqkixEH7IDr-Mpzl01VI9HwXBR31Xu8I4ozIOaOai2z6T4OWp2zS9RVFvaY63uwXrm2a-FMmcJRowENcsb0dHDDM-hVS5pr-X4c6TQyxG3HH9fjrDpjIQYR6alzOSUdmlqF6tKKOvt3aVGqAnKcPwC0O-BrvJrlMCCOFJ95YTY_hWsyivFZkAK9MF_Ih_V91pcG-dgT7RDMBkC9j-dvp1ZWcr2wCnigksm5GIaLm6oWR8za-47clkzZEEIgSDuFU8NTpwPQ-vMFiIY-Ietizp3a-3w"
     _init_reqd_objects(token)
     # register(token)
     # deploy_v2(token)

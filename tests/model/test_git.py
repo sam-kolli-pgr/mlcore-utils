@@ -1,6 +1,7 @@
 import pytest
 from result import is_ok, is_err
 
+from mlcore_utils.model.blacklodge import Dockerfile_Validator
 from mlcore_utils.model.common import MLCore_Secret
 from mlcore_utils.model.gh import (
     GitHub_Organization,
@@ -58,4 +59,13 @@ def test_clone_from_gh(a123662_testpipeline_git_repo: GitHub_Repo):
     # tarball = Tarball("/tmp/mlcore/" + git_repo.git_repo_name, "abc", "/tmp")
     # tarball.create()
 
+    assert False
+
+
+@pytest.mark.gitactions
+def test_docker_build_args():
+    docker_file = "tests/resources/docker_func/1Dockerfile"
+    docker_validator = Dockerfile_Validator.get_from_dockerfile(docker_file)
+    build_args = docker_validator.get_build_args()
+    print(build_args)
     assert False

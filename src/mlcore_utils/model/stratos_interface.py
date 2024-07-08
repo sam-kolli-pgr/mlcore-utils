@@ -1,5 +1,6 @@
 import json
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Set
+from result import Err, Ok, Result, is_ok, is_err
 from attr import asdict, define, field
 
 # from mlcore_utils.model.data import Stratos_Environment
@@ -88,3 +89,11 @@ class Stratos_ContainerBuild_Metadata_V1(Stratos_V1_Object):
     registries: List[str] = field(factory=list)
     build_args: Dict[str, str] = field(factory=dict)
     git_fetch_depth: int = field(default=1)
+
+
+    def validate_build_args_are_present(self, expected_build_args: Set[str]) -> Result[bool, str]:
+        leftover = expected_build_args.difference(set(self.build_args.keys()))
+        if len(leftover) > 0:
+            return Err(f"Build Args {leftover} are expected but not supplied")
+        else:
+            return Ok(True)

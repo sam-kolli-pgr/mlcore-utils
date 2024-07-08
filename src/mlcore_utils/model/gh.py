@@ -1,4 +1,5 @@
 from __future__ import annotations
+import base64
 import json
 from tarfile import TarFile
 from requests.auth import HTTPBasicAuth
@@ -68,6 +69,25 @@ class GitHub_Repo(object):
     local_path_to_clone_into: str = field(default="/tmp")
     repo_url_with_auth: Result[MLCore_Secret, str] = field(init=False)
     obtained_repo: Optional[Repo] = field(default=None)
+
+
+    def read_a_file(self, file_path: str) -> Result[str, str]:
+        if self.github_auth:
+            commit_hash = self.get_commit_sha()
+            if is_ok(commit_hash):
+                endpoint = f"https://api.github.com/repos/{self.github_organization}/{self.git_repo_name}/contents/{file_path}?ref={commit_hash.ok_value}"
+                response = self._call_github_api(Http_Method.GET, endpoint)
+                if response.status_code == 200:
+                    base64_content = response.json()["content"]
+                    content = base64.b64decode(base64_content).decode('utf-8')
+                    return Ok(content)
+                else:
+                    return Err(f"Could not get content from GitRepo for file '{file_path}'. Status_Code: {response.status_code}; text: {response.text}")
+            else:
+                return Err("Could not get commit hash to get file content from git repo")
+        else:
+            return Err("No Github Auth is provided to get content from GitHub")
+
 
     def __attrs_post_init__(self):
         if self.tag and self.commit_sha:

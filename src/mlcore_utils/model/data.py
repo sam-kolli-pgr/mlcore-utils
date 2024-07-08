@@ -344,7 +344,7 @@ class Blacklodge_Image_For_Stratos(object):
         build_args = {}
         build_args["PIPELINE_NAME"] = self.blacklodge_model.name
         build_args["PIPELINE_VERSION"] = str(self.blacklodge_model.version)
-        build_args["APP_TYPE"] = self.blacklodge_model.object_type.value
+        build_args["APP_TYPEE"] = self.blacklodge_model.object_type.value
         build_args["AWS_ACCOUNT_NUM"] = self.aws_accounts_for_blacklodge.aws_account_num
         build_args["PYTHON_VERSION"] = self.blacklodge_model.python_version
         build_args["BLACKLODGE_PIPELINE_REPO_HASH"] = "something"

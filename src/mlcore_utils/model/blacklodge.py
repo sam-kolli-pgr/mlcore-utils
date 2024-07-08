@@ -1,7 +1,7 @@
 from __future__ import annotations
 import requests
 import boto3
-from result import Err, Ok, Result
+from result import Err, Ok, Result, is_ok, is_err
 import toml
 from dockerfile_parse import DockerfileParser
 from typing import Optional, Any, List
@@ -32,6 +32,28 @@ class Prebuilt_Container(str, Enum):
             return "kafka_container"
         else:
             return self.value + "_container" + version_adder(python_version)
+@define
+class Dockerfile_Validator(object):
+    dockerfile_contents: str = field()
+    dfp : DockerfileParser = field(default=DockerfileParser())
+
+    @classmethod
+    def get_from_dockerfile(cls, filepath: str):
+        with open(filepath, 'r') as f:
+            content = f.read()
+            return Dockerfile_Validator(content)
+
+    def __attrs_post_init__(self):
+        self.dfp.content = self.dockerfile_contents
+
+    def get_build_args(self):
+        build_args = set()
+        for e in self.dfp.structure:
+            for ie in e:
+                if ie == 'instruction' and e[ie] == 'ARG':
+                    build_args.add(e['value'])
+
+        return build_args
 
 
 @define
@@ -40,6 +62,10 @@ class Blacklodge_Container(object):
     github_auth: GitHub_Auth = field()
     dockerfile_path: str = field()
     prebuilt_container: Prebuilt_Container = field()
+    # think this is the "src" folder in the the repo code base
+    # the docker file has a copy command "COPY ./container ./" , 
+    # where the container folder is within the src folder.
+    # so we tell that this top level "src" folder is the context for docker build
     context_path: str = field(default="./src")
     github_repo: GitHub_Repo = field(init=False)
 
@@ -47,6 +73,22 @@ class Blacklodge_Container(object):
         self.github_repo = GitHub_Repo.get_from_inputs(
             git_repo_url=self.git_repo_address, github_auth=self.github_auth
         )
+
+    def get_build_args_used_by_dockerfile(self):
+        # are all build args beiung supplied
+        docker_file_path = f"{self.context_path}/{self.dockerfile_path}"
+        content_result = self.github_repo.read_a_file(docker_file_path)
+        if is_ok(content_result):
+            dockerfile_validator = Dockerfile_Validator(content_result.ok_value)
+            build_args = dockerfile_validator.get_build_args()
+            return build_args
+        elif is_err(content_result):
+            raise Exception(content_result.err_value)
+        else:
+            raise Exception("Unknown error while trying to validate Dockerfile")
+
+    def does_dockerfile_copy_content_exist(self):
+        pass
 
     def initialize_github_repo(self, github_auth: GitHub_Auth):
         self.github_repo = GitHub_Repo.get_from_inputs(
